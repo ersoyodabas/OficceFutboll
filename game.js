@@ -13,14 +13,14 @@
   // on screen — this is a fixed sideline "TV" framing, not a per-player chase cam,
   // and it does not mirror by team (a real broadcast camera doesn't flip ends
   // depending on who has the ball).
-  const CAMERA_HEIGHT = 26;
-  const CAMERA_SIDE_DISTANCE = 43;
-  const CAMERA_FOV = 42;
+  const CAMERA_HEIGHT = 20;
+  const CAMERA_SIDE_DISTANCE = 30;
+  const CAMERA_FOV = 36;
   const PLAYER_ROTATION_SPEED = 9;
 
   // ---------- Visual-only scale (kept separate from server physics dimensions) ----------
   const PLAYER_VISUAL_SCALE = 1.18;
-  const BALL_VISUAL_SCALE = 1.25;
+  const BALL_VISUAL_SCALE = 0.9;
 
   // ---------- Default LAN server ----------
   const DEFAULT_SERVER_URL = 'ws://10.17.12.93:3000';

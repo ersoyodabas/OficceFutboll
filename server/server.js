@@ -24,7 +24,7 @@ const MATCH_END_PAUSE_SECONDS = 6;
 // Ready-up / auto-start config
 // ---------------------------------------------------------------------------
 const MIN_PLAYERS_TO_START = 1; // solo practice and multiplayer use the same ready flow
-const COUNTDOWN_SECONDS = 5;
+const COUNTDOWN_SECONDS = 3;
 const MATCH_DURATION_SECONDS = 300; // 5 minutes
 
 const { HALF_W, HALF_L, GOAL_HALF_W, GOAL_HEIGHT, BALL_R, PLAYER_R } = FIELD;
@@ -116,7 +116,7 @@ function send(ws, msg) {
 function broadcast(msg) {
   const data = JSON.stringify(msg);
   for (const c of clients.values()) {
-    if (c.ws.readyState === c.ws.OPEN) c.ws.send(data);
+    if (c.ws && c.ws.readyState === c.ws.OPEN) c.ws.send(data);
   }
 }
 
@@ -248,6 +248,28 @@ function startMatch() {
   }
   placeAllPlayers();
 
+  // Create AI goalkeepers for both ends
+  const createAIKeeper = (team) => ({
+    id: 'ai_keeper_' + team,
+    name: team === 'blue' ? 'AI Kaleci (Mavi)' : 'AI Kaleci (Kırmızı)',
+    team,
+    position: 'KL',
+    isAI: true,
+    inMatch: true,
+    ws: null,
+    pos: { x: 0, z: team === 'blue' ? HALF_L : -HALF_L },
+    vel: { x: 0, z: 0 },
+    input: { x: 0, z: 0, sprint: false },
+    facing: { x: 0, z: team === 'blue' ? -1 : 1 },
+    cooldowns: { A: 0, S: 0, D: 0 },
+    slideRemaining: 0,
+    recoveryRemaining: 0,
+    standingActive: 0,
+    lastAction: null,
+  });
+  clients.set('ai_keeper_blue', createAIKeeper('blue'));
+  clients.set('ai_keeper_red', createAIKeeper('red'));
+
   phase = 'playing';
   matchActive = true;
   matchStartedAt = Date.now();
@@ -277,6 +299,9 @@ function endMatch() {
   endPauseRemaining = MATCH_END_PAUSE_SECONDS;
   broadcast({ type: 'match_end', score, winner: score.blue > score.red ? 'blue' : 'red' });
   for (const c of clients.values()) c.inMatch = false;
+  // Remove AI keepers
+  clients.delete('ai_keeper_blue');
+  clients.delete('ai_keeper_red');
   world = null;
   ballBody = null;
   ballOwnerId = null;
@@ -341,25 +366,52 @@ function checkAutoStart() {
 // only dynamic cannon-es body; all action outcomes are decided here.
 // ---------------------------------------------------------------------------
 function allowedRange(c) {
-  const pos = POSITIONS[positionFor(c.position)];
-  const mirror = c.team === 'blue' ? 1 : -1;
-  let zMin, zMax;
-  if (mirror === 1) { zMin = pos.zRange[0]; zMax = pos.zRange[1]; }
-  else { zMin = -pos.zRange[1]; zMax = -pos.zRange[0]; }
-  let xMin = PITCH_MIN_X, xMax = PITCH_MAX_X;
-  if (pos.xRange) {
-    xMin = Math.max(PITCH_MIN_X, pos.xRange[0]);
-    xMax = Math.min(PITCH_MAX_X, pos.xRange[1]);
-  }
+  // Players can roam freely across the entire pitch (inside boundaries)
+  // AI keepers have restricted zone (handled in applyPlayerControl)
   return {
-    xMin, xMax,
-    zMin: Math.max(PITCH_MIN_Z, zMin),
-    zMax: Math.min(PITCH_MAX_Z, zMax),
+    xMin: PITCH_MIN_X,
+    xMax: PITCH_MAX_X,
+    zMin: PITCH_MIN_Z,
+    zMax: PITCH_MAX_Z,
   };
 }
 
 function applyPlayerControl(c, dt) {
   if (!c.inMatch) return;
+
+  // AI goalkeeper behavior
+  if (c.isAI && c.position === 'KL') {
+    const keeperZ = c.team === 'blue' ? HALF_L : -HALF_L;
+    const targetX = ballBody.position.x;
+    const targetZ = Math.max(keeperZ - 4, Math.min(keeperZ + 3, ballBody.position.z));
+    
+    const dx = targetX - c.pos.x;
+    const dz = targetZ - c.pos.z;
+    const dist = Math.hypot(dx, dz);
+    
+    if (dist > 0.5) {
+      const speed = dist > 8 ? PLAYER_SPEED : PLAYER_SPEED * 0.7;
+      c.vel.x = (dx / dist) * speed;
+      c.vel.z = (dz / dist) * speed;
+      c.facing = { x: dx / dist, z: dz / dist };
+    } else {
+      c.vel.x = 0;
+      c.vel.z = 0;
+    }
+
+    // Keeper area bounds (6-yard box)
+    const keeperXMin = Math.max(PITCH_MIN_X, -GOAL_HALF_W * 2.5);
+    const keeperXMax = Math.min(PITCH_MAX_X, GOAL_HALF_W * 2.5);
+    const keeperZMin = keeperZ - 5;
+    const keeperZMax = keeperZ + 3;
+    
+    c.pos.x = Math.max(keeperXMin, Math.min(keeperXMax, c.pos.x + c.vel.x * dt));
+    c.pos.z = Math.max(keeperZMin, Math.min(keeperZMax, c.pos.z + c.vel.z * dt));
+    
+    c.standingActive = Math.max(0, c.standingActive - dt);
+    return;
+  }
+
   const inp = c.input || { x: 0, z: 0, sprint: false };
   const len = Math.hypot(inp.x, inp.z) || 1;
   const nx = inp.x / len, nz = inp.z / len;
@@ -483,6 +535,17 @@ function updateBallControl(dt) {
     }
     if (c.slideRemaining > 0 && attemptTackle(c, true)) {
       broadcast({ type: 'actionResult', id: c.id, action: 'slide_tackle', success: true, hasBall: false });
+    }
+    // AI goalkeeper automatic defense
+    if (c.isAI && c.position === 'KL' && ballOwnerId && ballOwnerId !== c.id) {
+      const dist = ballDistance(c);
+      if (dist < SLIDE_TACKLE_RANGE && c.slideRemaining === 0 && Date.now() >= c.cooldowns.D) {
+        c.slideRemaining = SLIDE_DURATION;
+        if (attemptTackle(c, true)) {
+          c.cooldowns.D = Date.now() + SLIDE_TACKLE_COOLDOWN * 1000;
+          broadcast({ type: 'actionResult', id: c.id, action: 'slide_tackle', success: true, hasBall: false });
+        }
+      }
     }
   }
 }
