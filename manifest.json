@@ -1,0 +1,28 @@
+{
+  "manifest_version": 3,
+  "name": "Ofis Futbolu 3D",
+  "version": "1.0.0",
+  "description": "Klavye ile oynanan, şirket ağından çok oyunculu 3 boyutlu ofis futbolu oyunu.",
+  "icons": {
+    "16": "icons/icon16.png",
+    "32": "icons/icon32.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "action": {
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "32": "icons/icon32.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    },
+    "default_title": "Ofis Futbolu 3D'yi oyna"
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "permissions": ["storage"],
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'self'"
+  }
+}

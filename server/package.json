@@ -1,0 +1,14 @@
+{
+  "name": "ofis-futbolu-server",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Ofis Futbolu 3D icin LAN lobi/mac sunucusu (WebSocket + cannon-es fizik motoru)",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "cannon-es": "^0.20.0",
+    "ws": "^8.21.3"
+  }
+}
