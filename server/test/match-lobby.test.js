@@ -10,7 +10,8 @@ const WebSocket = require('ws');
 
 test('leaving a match preserves the lobby connection and remaining players', { timeout: 30000 }, async (t) => {
   const server = spawn(process.execPath, [path.join(__dirname, '..', 'server.js')], {
-    env: { ...process.env, PORT: '0' }, windowsHide: true,
+    // OPEN_BROWSER=0: a test server must not open tabs in the developer's browser.
+    env: { ...process.env, PORT: '0', OPEN_BROWSER: '0' }, windowsHide: true,
   });
   t.after(() => server.kill());
   const port = await new Promise((resolve, reject) => {

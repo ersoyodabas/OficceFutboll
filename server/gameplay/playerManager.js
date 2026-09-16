@@ -1,4 +1,7 @@
-import { PLAYER_SPEED, SPRINT_SPEED, SLIDE_SPEED, SLIDE_RECOVERY, PITCH_MIN_X, PITCH_MAX_X, PITCH_MIN_Z, PITCH_MAX_Z, POSITIONS, positionFor } from '../core/config.js';
+import { PLAYER_SPEED, SPRINT_SPEED, SLIDE_SPEED, SLIDE_RECOVERY, PITCH_MIN_X, PITCH_MAX_X, PITCH_MIN_Z, PITCH_MAX_Z, POSITIONS, positionFor,
+  PLAYER_ACCELERATION, PLAYER_SPRINT_ACCELERATION, PLAYER_DECELERATION, PLAYER_STAND_TURN_RATE, PLAYER_MAX_TURN_RATE, PLAYER_SPRINT_TURN_RATE,
+  SHOT_CHARGE_TURN_FACTOR, SHOT_CHARGE_SPEED_FACTOR,
+  KEEPER_POSITION_SPEED, KEEPER_LATERAL_FACTOR, KEEPER_MAX_SIDE, KEEPER_MIN_DEPTH, KEEPER_MAX_DEPTH, KEEPER_DIVE_SPEED } from '../core/config.js';
 import { HALF_L, GOAL_HALF_W, FIELD } from '../../shared/field.js';
 export function createPlayerManager({ state }) {
 function spawnFor(c, sameSpotIndex) {
@@ -34,6 +37,7 @@ function placeAllPlayers() {
     c.facing = { x: 0, z: c.team === 'blue' ? -1 : 1 };
     c.cooldowns = { A: 0, S: 0, D: 0 };
     c.standingActive = 0;
+    c.shotCharge = null;
     c.lastAction = null;
   }
 }
@@ -46,6 +50,56 @@ function allowedRange(c) {
     zMin: PITCH_MIN_Z,
     zMax: PITCH_MAX_Z,
   };
+}
+
+// Turn rate falls from standing agility to jog to sprint as the player speeds up.
+function turnRateForSpeed(speed) {
+  if (speed <= PLAYER_SPEED) return PLAYER_STAND_TURN_RATE + (PLAYER_MAX_TURN_RATE - PLAYER_STAND_TURN_RATE) * (speed / PLAYER_SPEED);
+  const t = Math.min(1, (speed - PLAYER_SPEED) / (SPRINT_SPEED - PLAYER_SPEED));
+  return PLAYER_MAX_TURN_RATE + (PLAYER_SPRINT_TURN_RATE - PLAYER_MAX_TURN_RATE) * t;
+}
+
+function approach(value, target, maxStep) {
+  return value < target ? Math.min(target, value + maxStep) : Math.max(target, value - maxStep);
+}
+
+// Momentum-based steering. The body turns toward the input at a speed-dependent
+// rate, and speed only builds along the direction the body already faces:
+// input behind the player brakes first, then the body turns, then it
+// accelerates the new way. Velocity always follows the body's facing.
+function steerFootballer(c, dt) {
+  const inp = c.input || { x: 0, z: 0, sprint: false };
+  const inputLength = Math.hypot(inp.x, inp.z);
+  const charging = !!c.shotCharge;
+  let speed = Math.hypot(c.vel.x, c.vel.z);
+  let desiredSpeed = 0;
+
+  if (inputLength > 0.01) {
+    const nx = inp.x / inputLength, nz = inp.z / inputLength;
+    const heading = Math.atan2(c.facing.x, c.facing.z);
+    const diff = Math.atan2(Math.sin(Math.atan2(nx, nz) - heading), Math.cos(Math.atan2(nx, nz) - heading));
+    const maxTurn = turnRateForSpeed(speed) * (charging ? SHOT_CHARGE_TURN_FACTOR : 1) * dt;
+    let remaining = 0;
+    if (Math.abs(diff) <= maxTurn) {
+      c.facing = { x: nx, z: nz }; // aligned: use the exact input direction
+    } else {
+      const next = heading + Math.sign(diff) * maxTurn;
+      c.facing = { x: Math.sin(next), z: Math.cos(next) };
+      remaining = Math.abs(diff) - maxTurn;
+    }
+    const cap = c.recoveryRemaining > 0 ? PLAYER_SPEED * .35 : (inp.sprint ? SPRINT_SPEED : PLAYER_SPEED);
+    // Full speed only once the body points where the player wants to go.
+    desiredSpeed = cap * Math.max(0, Math.cos(remaining)) * (charging ? SHOT_CHARGE_SPEED_FACTOR : 1);
+  }
+
+  if (desiredSpeed > speed) {
+    const acceleration = speed >= PLAYER_SPEED ? PLAYER_SPRINT_ACCELERATION : PLAYER_ACCELERATION;
+    speed = approach(speed, desiredSpeed, acceleration * dt);
+  } else {
+    speed = approach(speed, desiredSpeed, PLAYER_DECELERATION * dt);
+  }
+  c.vel.x = c.facing.x * speed;
+  c.vel.z = c.facing.z * speed;
 }
 
 function applyPlayerControl(c, dt) {
@@ -88,22 +142,37 @@ function applyPlayerControl(c, dt) {
   // AI goalkeeper behavior
   if (c.isAI && c.position === 'KL') {
     const keeperZ = c.team === 'blue' ? HALF_L : -HALF_L;
-    const targetX = state.ballBody.position.x;
-    const targetZ = Math.max(keeperZ - 4, Math.min(keeperZ + 3, state.ballBody.position.z));
-    
+    const sign = c.team === 'blue' ? 1 : -1;
+    const ball = state.ballBody.position;
+    const now = Date.now();
+    let targetX = c.pos.x, targetZ = c.pos.z, speed = 0;
+    const dive = c.keeperDive; // planned by actions.js when a shot is read
+    if (dive && now >= dive.startsAt) {
+      targetX = dive.targetX; speed = KEEPER_DIVE_SPEED;
+    } else if (!dive) {
+      // Narrow the angle: shade toward the ball's side and come off the line
+      // as play approaches, but never track the ball one-to-one.
+      const distance = Math.hypot(ball.x, ball.z - keeperZ);
+      const depth = Math.max(KEEPER_MIN_DEPTH, Math.min(KEEPER_MAX_DEPTH, KEEPER_MAX_DEPTH * (1 - distance / 35)));
+      targetX = Math.max(-KEEPER_MAX_SIDE, Math.min(KEEPER_MAX_SIDE, ball.x * KEEPER_LATERAL_FACTOR));
+      targetZ = keeperZ - sign * depth;
+      speed = KEEPER_POSITION_SPEED;
+    } // else: reading the shot, set and still for the reaction time
+
     const dx = targetX - c.pos.x;
     const dz = targetZ - c.pos.z;
     const dist = Math.hypot(dx, dz);
-    
-    if (dist > 0.5) {
-      const speed = dist > 8 ? PLAYER_SPEED : PLAYER_SPEED * 0.7;
-      c.vel.x = (dx / dist) * speed;
-      c.vel.z = (dz / dist) * speed;
-      c.facing = { x: dx / dist, z: dz / dist };
+    const step = speed * dt;
+    if (dist > 1e-3 && speed > 0) {
+      const move = Math.min(step, dist) / dt;
+      c.vel.x = (dx / dist) * move;
+      c.vel.z = (dz / dist) * move;
     } else {
       c.vel.x = 0;
       c.vel.z = 0;
     }
+    const toBallX = ball.x - c.pos.x, toBallZ = ball.z - c.pos.z, toBall = Math.hypot(toBallX, toBallZ);
+    c.facing = toBall > .1 ? { x: toBallX / toBall, z: toBallZ / toBall } : { x: 0, z: -sign };
 
     // Keeper area bounds (6-yard box)
     const keeperXMin = Math.max(PITCH_MIN_X, -GOAL_HALF_W * 2.5);
@@ -118,14 +187,8 @@ function applyPlayerControl(c, dt) {
     return;
   }
 
-  const inp = c.input || { x: 0, z: 0, sprint: false };
-  const len = Math.hypot(inp.x, inp.z) || 1;
-  const nx = inp.x / len, nz = inp.z / len;
   c.recoveryRemaining = Math.max(0, c.recoveryRemaining - dt);
-  const speed = c.recoveryRemaining > 0 ? PLAYER_SPEED * .35 : (inp.sprint ? SPRINT_SPEED : PLAYER_SPEED);
-  c.vel.x = nx * speed;
-  c.vel.z = nz * speed;
-  if (inp.x || inp.z) c.facing = { x: nx, z: nz };
+  steerFootballer(c, dt);
 
   const range = allowedRange(c);
   c.pos.x = Math.max(range.xMin, Math.min(range.xMax, c.pos.x + c.vel.x * dt));

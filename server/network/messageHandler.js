@@ -18,7 +18,7 @@ function onConnection(ws) {
     inMatch: false, pos: { x: 0, z: 0 }, vel: { x: 0, z: 0 },
     input: { x: 0, z: 0, sprint: false },
     facing: { x: 0, z: 1 }, cooldowns: { A: 0, S: 0, D: 0 },
-    slideRemaining: 0, slideDirection: null, recoveryRemaining: 0, standingActive: 0, lastAction: null,
+    slideRemaining: 0, slideDirection: null, recoveryRemaining: 0, standingActive: 0, shotCharge: null, lastAction: null,
     lastSfxAt: 0,
   };
   let joined = false;
@@ -57,6 +57,7 @@ function onConnection(ws) {
       if (!isMatchPhase(state.phase)) return;
       client.inMatch = false;
       client.ready = false;
+      client.shotCharge = null;
       client.input = { x: 0, z: 0, sprint: false };
       client.vel = { x: 0, z: 0 };
       client.slideRemaining = 0;
@@ -80,6 +81,13 @@ function onConnection(ws) {
       };
     } else if (msg.type === CLIENT.ACTION && joined) {
       actions.performAction(client, msg.key);
+    } else if (msg.type === CLIENT.SHOT_CHARGE_START && joined) {
+      // Any power/charge fields sent by the browser are ignored: the server times the hold.
+      actions.startShotCharge(client);
+    } else if (msg.type === CLIENT.SHOT_RELEASE && joined) {
+      actions.releaseShot(client);
+    } else if (msg.type === CLIENT.SHOT_CANCEL && joined) {
+      actions.cancelShotCharge(client);
     } else if (msg.type === CLIENT.SEND_CHAT_MESSAGE && joined) {
       chat.addMessage(client, msg.message);
     } else if (msg.type === CLIENT.LOBBY_SFX && joined) {

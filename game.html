@@ -23,6 +23,10 @@
       <button class="secondary" id="hudSettingsBtn" type="button" data-open-settings aria-haspopup="dialog">Ayarlar</button>
     </div>
 
+    <div id="shotPower" class="shot-power" hidden aria-hidden="true">
+      <span class="shot-power-segment"></span><span class="shot-power-segment"></span><span class="shot-power-segment"></span><span class="shot-power-segment"></span><span class="shot-power-segment"></span><span class="shot-power-segment"></span><span class="shot-power-segment"></span><span class="shot-power-segment"></span><span class="shot-power-segment"></span><span class="shot-power-segment"></span>
+    </div>
+
     <div id="hint" hidden>
       <kbd>◀ ▲ ▼ ▶</kbd> hareket &nbsp;•&nbsp; <kbd>W</kbd> sprint &nbsp;•&nbsp; <kbd>A</kbd> pas &nbsp;•&nbsp; <kbd>S</kbd> şut / ayakta müdahale &nbsp;•&nbsp; <kbd>D</kbd> orta / kayarak müdahale
     </div>
@@ -127,6 +131,9 @@
           <label class="range-setting" for="lobbyMusicVolume"><span>Lobi müziği seviyesi</span><output id="lobbyMusicVolumeValue">50%</output></label>
           <input id="lobbyMusicVolume" type="range" min="0" max="1" step="0.01" value="0.5" />
           <p class="settings-note">Lobide çalan özgün stadyum teması, maç başlayınca durur.</p>
+          <label class="range-setting" for="crowdVolume"><span>Taraftar sesi</span><output id="crowdVolumeValue">20%</output></label>
+          <div class="volume-slider"><span aria-hidden="true">🔈</span><input id="crowdVolume" type="range" min="0" max="1" step="0.01" value="0.2" aria-describedby="crowdVolumeNote" /><span aria-hidden="true">🔊</span></div>
+          <p class="settings-note" id="crowdVolumeNote">Stadyum ambiyansı yalnızca maç sırasında çalar.</p>
         </section>
         <section class="settings-section" aria-labelledby="keySettingsTitle">
           <div class="settings-heading compact"><h2 id="keySettingsTitle">Tuş atamaları</h2><button class="secondary" id="resetKeysBtn" type="button">Varsayılana dön</button></div>

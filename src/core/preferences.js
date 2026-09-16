@@ -5,7 +5,8 @@ export const DEFAULT_KEYS = Object.freeze({
   sprint: 'KeyW', pass: 'KeyA', shoot: 'KeyS', cross: 'KeyD', menu: 'Escape',
 });
 
-const DEFAULTS = Object.freeze({ masterVolume: 0.5, lobbyMusicVolume: 0.5, lobbyMusicEnabled: true, keys: DEFAULT_KEYS });
+// crowdVolume: in-match stadium ambience, separate from music and effects; subtle by default.
+const DEFAULTS = Object.freeze({ masterVolume: 0.5, lobbyMusicVolume: 0.5, lobbyMusicEnabled: true, crowdVolume: 0.2, keys: DEFAULT_KEYS });
 
 function clampVolume(value, fallback) {
   const number = Number(value);
@@ -15,7 +16,8 @@ function normalize(candidate = {}) {
   const keys = { ...DEFAULT_KEYS };
   for (const name of Object.keys(DEFAULT_KEYS)) if (typeof candidate.keys?.[name] === 'string' && candidate.keys[name]) keys[name] = candidate.keys[name];
   if (new Set(Object.values(keys)).size !== Object.keys(keys).length) Object.assign(keys, DEFAULT_KEYS);
-  return { masterVolume: clampVolume(candidate.masterVolume, .5), lobbyMusicVolume: clampVolume(candidate.lobbyMusicVolume, .5), lobbyMusicEnabled: candidate.lobbyMusicEnabled !== false, keys };
+  return { masterVolume: clampVolume(candidate.masterVolume, .5), lobbyMusicVolume: clampVolume(candidate.lobbyMusicVolume, .5), lobbyMusicEnabled: candidate.lobbyMusicEnabled !== false,
+    crowdVolume: clampVolume(candidate.crowdVolume, DEFAULTS.crowdVolume), keys };
 }
 
 export function createPreferences(storage = globalThis.localStorage) {

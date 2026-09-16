@@ -12,7 +12,8 @@ export const CAMERA_HFOV_DEG = 24.8;
 export const CAMERA_MIN_VFOV_DEG = 14.2;
 // Furthest the view centre travels toward a goal; the goal line then sits ~13 m right of centre.
 export const CAMERA_PAN_LIMIT = 18.8;
-export const PLAYER_ROTATION_SPEED = 9;
+// The server already limits turn rate; the client only smooths between snapshots.
+export const PLAYER_ROTATION_SPEED = 14;
 
 // ---------- Visual-only scale (kept separate from server physics dimensions) ----------
 export const PLAYER_VISUAL_SCALE = 1;

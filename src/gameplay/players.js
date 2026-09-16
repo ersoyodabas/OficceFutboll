@@ -57,6 +57,8 @@ function applySnapshot(players, snap = false) {
     }
     e.netVel.set(p.vx, p.vz);
     e.kicking = p.action === 'shot' || p.action === 'pass' || p.action === 'cross';
+    e.shooting = p.action === 'shot';
+    e.charging = !!p.charging;
     e.sliding = !!p.sliding;
     e.hasBall = !!p.hasBall;
     e.facingX = p.facingX;
@@ -67,7 +69,7 @@ function applySnapshot(players, snap = false) {
   }
 
 }
-function update(dt) {
+function update(dt, { localCharging = false } = {}) {
     for (const [id, e] of entities) {
       e.renderPos.lerp(e.netPos, Math.min(1, dt * 14));
       e.footballer.root.position.set(e.renderPos.x, 0, e.renderPos.z);
@@ -81,8 +83,10 @@ function update(dt) {
         const diff = Math.atan2(Math.sin(targetAngle - cur), Math.cos(targetAngle - cur));
         e.footballer.root.rotation.y = cur + diff * (1 - Math.exp(-dt * PLAYER_ROTATION_SPEED));
       }
-      e.footballer.body.rotation.x = THREE.MathUtils.damp(e.footballer.body.rotation.x, e.sliding ? -1.38 : sprinting ? .2 : 0, 15, dt);
-      animateFootballer(e.footballer, spd, e.kicking, e.sliding, sprinting, dt);
+      // The local player's wind-up starts on key press, before the server echoes it.
+      const charging = e.charging || (id === state.myId && localCharging);
+      e.footballer.body.rotation.x = THREE.MathUtils.damp(e.footballer.body.rotation.x, e.sliding ? -1.38 : charging ? -.07 : sprinting ? .2 : 0, 15, dt);
+      animateFootballer(e.footballer, spd, e.kicking, e.sliding, sprinting, dt, { charging, shooting: e.shooting });
 
       const facingLength = Math.hypot(e.facingX, e.facingZ) || 1;
       const facing = { x: e.facingX / facingLength, z: e.facingZ / facingLength };
@@ -116,6 +120,13 @@ function update(dt) {
 function getLocalPosition() {
   return entities.get(state.myId)?.renderPos || null;
 }
+function getLocalTagHeight() {
+  return entities.get(state.myId)?.footballer.tagOffsetY ?? 2;
+}
+// Latest authoritative possession for a player, as seen in snapshots.
+function hasBall(id) {
+  return !!entities.get(id)?.hasBall;
+}
 
-return { clearEntities, applySnapshot, update, getLocalPosition };
+return { clearEntities, applySnapshot, update, getLocalPosition, getLocalTagHeight, hasBall };
 }

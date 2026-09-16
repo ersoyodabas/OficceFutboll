@@ -9,71 +9,80 @@ const TURF_SIZE_X = HALF_W * 2 + RUNOFF * 2; // across the pitch (world X)
 const TURF_SIZE_Z = HALF_L * 2 + RUNOFF * 2; // along the pitch (world Z)
 
 // ---------- saha.png grass surface ----------
-// saha.png (1536 × 1024) is a grass photo with seven mowing bands running
-// across its long side; its left/right edges fall on a dark→light band edge,
-// so it repeats cleanly along the band axis. One tile spans a third of the
-// pitch length, which gives ~3 m bands and puts both goal lines and the
-// halfway line on band edges. Texels stay square (~7 px per 10 cm), fine
-// enough to keep blade detail at the broadcast camera distance.
-const GRASS_TILE_LENGTH = (HALF_L * 2) / 3;            // metres of pitch per image width (band axis)
-const GRASS_TILE_WIDTH = GRASS_TILE_LENGTH * 1024 / 1536; // metres per image height
-export const grassTextureRepeatX = TURF_SIZE_X / GRASS_TILE_WIDTH;  // ≈ 4.42 tiles across the turf
-export const grassTextureRepeatY = TURF_SIZE_Z / GRASS_TILE_LENGTH; // ≈ 3.75 tiles along the turf
-// The photo's natural colour is a saturated yellow-green; this linear multiply
-// pulls it toward a deeper natural turf green under stadium lighting.
-// Measured on the broadcast view: untinted-ish output averaged sRGB (74,133,36);
-// this brings it to roughly (65,122,42).
-const GRASS_TINT = new THREE.Color().setRGB(.62, .6, 1.15);
-const GRASS_ANISOTROPY_CAP = 8;
+// saha.png (1536 × 1024) is a grass photo whose ~7.1 mowing bands vary along
+// the image width; the left/right edges meet on a dark→light band edge.
+// The image is tiled at its native aspect ratio (never stretched): the image
+// width runs along the pitch length so the bands appear as straight vertical
+// stripes from the main-stand camera, and every tile has the same orientation
+// (no texture rotation or mirroring). Exactly GRASS_TILES_ALONG_PITCH tiles
+// cover the goal-line-to-goal-line length; with 3, each tile is 21.2 m and the
+// in-pitch tile seams fall exactly under the goal lines and the dotted offside
+// lines (one third of the length). The stripes are part of the photo, so more
+// tiles means sharper blades but narrower stripes (3 tiles: ~3 m stripes,
+// 72 texels per metre, sharp at 1080p broadcast density).
+const GRASS_TILES_ALONG_PITCH = 3;
+const GRASS_IMAGE_WIDTH = 1536, GRASS_IMAGE_HEIGHT = 1024;
+const GRASS_TILE_LENGTH = (HALF_L * 2) / GRASS_TILES_ALONG_PITCH;                   // metres per image width (world Z)
+const GRASS_TILE_WIDTH = GRASS_TILE_LENGTH * GRASS_IMAGE_HEIGHT / GRASS_IMAGE_WIDTH; // metres per image height (world X)
+export const grassTextureRepeatX = TURF_SIZE_Z / GRASS_TILE_LENGTH; // ≈ 3.75 image widths along the turf
+export const grassTextureRepeatY = TURF_SIZE_X / GRASS_TILE_WIDTH;  // ≈ 4.42 image heights across the turf
+// Linear RGB multiplier: the photo is a saturated yellow-green; measured on the
+// broadcast view this brings the turf to a deeper natural green (~sRGB 67,125,38).
+const GRASS_TINT_RGB = [.62, .6, 1.15];
 // Height of the markings above the turf; with polygon offset this keeps them
 // from z-fighting at the long, shallow broadcast view without visibly floating.
 const MARKINGS_LIFT = .008;
 
 export function createField({ scene, renderer }) {
-const anisotropy = Math.min(renderer.capabilities.getMaxAnisotropy(), GRASS_ANISOTROPY_CAP);
+// Grazing broadcast angle: use the highest anisotropy the GPU offers.
+const anisotropy = renderer.capabilities.getMaxAnisotropy();
 
 const grassTexture = loadTexture('textures/pitch/saha.png', {
   onError: () => { grassMat.map = null; grassMat.color.set(0x3f7a2c); grassMat.needsUpdate = true; },
 });
 grassTexture.colorSpace = THREE.SRGBColorSpace;
 grassTexture.wrapS = grassTexture.wrapT = THREE.RepeatWrapping;
+grassTexture.generateMipmaps = true;
+grassTexture.minFilter = THREE.LinearMipmapLinearFilter;
+grassTexture.magFilter = THREE.LinearFilter;
 grassTexture.anisotropy = anisotropy;
-// Rotate a quarter turn so the bands run across the pitch (they vary along its
-// length, like the stripes seen from the main-stand camera). With the rotation
-// about the centre, repeat.x scales the turf's length axis and repeat.y its width.
-grassTexture.center.set(.5, .5);
-grassTexture.rotation = Math.PI / 2;
-grassTexture.repeat.set(grassTextureRepeatY, grassTextureRepeatX);
-// Along the band axis the texture coordinate is .5 + offset - z / GRASS_TILE_LENGTH;
-// shift it so a tile edge (a band edge) lands on each goal line.
-grassTexture.offset.set((1 - (.5 + HALF_L / GRASS_TILE_LENGTH) % 1) % 1, 0);
+grassTexture.repeat.set(grassTextureRepeatX, grassTextureRepeatY);
+// Put a tile edge on the +Z goal line and the +X touchline (see createGrassGeometry
+// for the UV layout); the other in-pitch Z seams then land under white lines too.
+grassTexture.offset.set(
+  -(((HALF_L + TURF_SIZE_Z / 2) / GRASS_TILE_LENGTH) % 1),
+  -(((HALF_W + TURF_SIZE_X / 2) / GRASS_TILE_WIDTH) % 1),
+);
 
 const grassNormal = loadTexture('textures/pitch/grass_normal.png', {
   onError: () => { grassMat.normalMap = null; grassMat.needsUpdate = true; },
 });
 grassNormal.wrapS = grassNormal.wrapT = THREE.RepeatWrapping;
-grassNormal.repeat.set(TURF_SIZE_X / 4, TURF_SIZE_Z / 4);
+grassNormal.repeat.set(TURF_SIZE_Z / 4, TURF_SIZE_X / 4);
 grassNormal.anisotropy = anisotropy;
 
 // Matte natural turf: high roughness, no metalness, a faint normal map for
 // light variation. No emissive, so the grass never looks self-lit.
 const grassMat = new THREE.MeshStandardMaterial({
   map: grassTexture,
-  color: GRASS_TINT,
+  color: new THREE.Color().setRGB(...GRASS_TINT_RGB),
   roughness: .92,
   metalness: 0,
   normalMap: grassNormal,
   normalScale: new THREE.Vector2(.15, .15),
 });
 
-// A turf-textured plane of any size centred on the pitch; UVs are remapped so
-// every surface using grassMat samples the same world-space pattern (the lobby
-// pitch reuses this with the same material and texture).
+// A turf-textured plane of any size centred on the pitch, lying flat once
+// rotated -90° about X. UVs are laid out in world space: u follows world Z (the
+// pitch length, the image's band axis) and v follows world X, both normalised
+// to the full turf, so every surface using grassMat samples the same continuous
+// pattern (the lobby pitch reuses this with the same material and texture).
 function createGrassGeometry(width, depth) {
   const geometry = new THREE.PlaneGeometry(width, depth);
-  const uv = geometry.attributes.uv;
+  const position = geometry.attributes.position, uv = geometry.attributes.uv;
   for (let i = 0; i < uv.count; i++) {
-    uv.setXY(i, .5 + (uv.getX(i) - .5) * width / TURF_SIZE_X, .5 + (uv.getY(i) - .5) * depth / TURF_SIZE_Z);
+    const worldX = position.getX(i), worldZ = -position.getY(i); // plane Y maps to world -Z after the rotation
+    uv.setXY(i, .5 + worldZ / TURF_SIZE_Z, .5 + worldX / TURF_SIZE_X);
   }
   return geometry;
 }

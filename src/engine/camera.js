@@ -2,11 +2,10 @@ import { CAMERA_DISTANCE, CAMERA_HEIGHT, CAMERA_TILT_DEG, CAMERA_HFOV_DEG, CAMER
 import { THREE } from '../engine/three.js';
 import { HALF_L } from '../../shared/field.js';
 
+export function createCamera({ renderer }) {
 const { degToRad, radToDeg, damp, clamp } = THREE.MathUtils;
 // Ground point the camera looks at, from its height and tilt.
 const LOOK_X = CAMERA_DISTANCE - CAMERA_HEIGHT / Math.tan(degToRad(CAMERA_TILT_DEG));
-
-export function createCamera({ renderer }) {
 const camera = new THREE.PerspectiveCamera(CAMERA_MIN_VFOV_DEG, window.innerWidth / window.innerHeight, 1, 400);
 
 // Keep the calibrated horizontal view on any aspect ratio; taller windows see

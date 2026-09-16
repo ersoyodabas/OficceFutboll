@@ -14,11 +14,13 @@ export function createSettings({ preferences, onInteraction = () => {} }) {
   const overlay = $('settingsOverlay'), masterVolume = $('masterVolume'), masterVolumeValue = $('masterVolumeValue');
   const lobbyMusicVolume = $('lobbyMusicVolume'), lobbyMusicVolumeValue = $('lobbyMusicVolumeValue');
   const lobbyMusicEnabled = $('lobbyMusicEnabled'), bindings = $('keyBindings'), captureStatus = $('keyCaptureStatus');
+  const crowdVolume = $('crowdVolume'), crowdVolumeValue = $('crowdVolumeValue');
   let capturing = null;
   function render(value = preferences.get()) {
     masterVolume.value = String(value.masterVolume); masterVolumeValue.textContent = `${Math.round(value.masterVolume * 100)}%`;
     lobbyMusicVolume.value = String(value.lobbyMusicVolume); lobbyMusicVolumeValue.textContent = `${Math.round(value.lobbyMusicVolume * 100)}%`;
     lobbyMusicEnabled.checked = value.lobbyMusicEnabled;
+    crowdVolume.value = String(value.crowdVolume); crowdVolumeValue.textContent = `${Math.round(value.crowdVolume * 100)}%`;
     bindings.replaceChildren(...BINDINGS.map(([name, label]) => {
       const row = document.createElement('div'); row.className = 'key-binding-row';
       const title = document.createElement('span'); title.textContent = label;
@@ -45,6 +47,7 @@ export function createSettings({ preferences, onInteraction = () => {} }) {
   masterVolume.addEventListener('input', () => { onInteraction(); preferences.set({ masterVolume: Number(masterVolume.value) }); });
   lobbyMusicVolume.addEventListener('input', () => { onInteraction(); preferences.set({ lobbyMusicVolume: Number(lobbyMusicVolume.value) }); });
   lobbyMusicEnabled.addEventListener('change', () => { onInteraction(); preferences.set({ lobbyMusicEnabled: lobbyMusicEnabled.checked }); });
+  crowdVolume.addEventListener('input', () => { onInteraction(); preferences.set({ crowdVolume: Number(crowdVolume.value) }); });
   preferences.subscribe(render); render();
   return { open, close, isOpen, handleKeydown };
 }

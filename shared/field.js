@@ -8,6 +8,8 @@ export const FIELD = Object.freeze({
     // Regulation 7.32 m × 2.44 m goal.
     GOAL_HALF_W: 3.66,
     GOAL_HEIGHT: 2.44,
+    // Posts and crossbar (12 cm diameter) stand just behind the goal line.
+    GOAL_POST_R: 0.06,
     BALL_R: 0.18,
     PLAYER_R: 0.48,
     LINE_WIDTH: 0.12,

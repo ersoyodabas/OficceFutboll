@@ -1,0 +1,48 @@
+// Cheeky, office-friendly lines shown under the scorer after a goal. The server
+// picks one per goal (goalEvent.tauntIndex) so every client shows the same line.
+export const GOAL_TAUNTS = Object.freeze([
+  'Nasıl Çaktım Ama?',
+  'Kaleci Hâlâ Topu Arıyor!',
+  'Bu Gol Müzeye Gider!',
+  'Ağları Deldim, Faturası Sizde!',
+  'Seyret ve Öğren!',
+  'Kaleciye Selam, Topa Veda!',
+  'Bu Daha Isınma Turuydu!',
+  'Defans Nerede? Kahve Molasında mı?',
+  'Çok Kolay, Çok Rahat!',
+  'Bir Tane Daha İster misiniz?',
+  'Kaleci Yön Bile Bulamadı!',
+  'Bu Şutun Sahibi Belli!',
+  'Toplantıdan Önce Bir Tane Daha!',
+  'Sizi Mesaiye Bıraktım!',
+  'Ofisin Yeni Kralı Burada!',
+  'Ağlar Titredi, Siz Titrediniz!',
+  'Bunu Tekrar İzleyin, Ders Niyetine!',
+  'Kaleciye Geçmiş Olsun!',
+  'Fizik Kuralları Bana İşlemez!',
+  'Bu Gol Excel\'e Sığmaz!',
+  'Rakip Hâlâ Şokta!',
+  'Ben Böyle Atarım Kardeşim!',
+  'Gol Değil, Sanat Eseri!',
+  'Topu Değil, Umutlarınızı Vurdum!',
+  'Defansı Cebimde Taşıdım!',
+  'Kaleciye Bir Harita Lazım!',
+  'Hadi Bakalım, Santra Sizde!',
+  'Gol Videosunu Mailinize Yolladım!',
+  'Bugün Benim Günüm!',
+  'Durdurabilen Varsa Buyursun!',
+  'Bir Klasik Daha!',
+  'Direkler Bile Alkışladı!',
+  'Sessiz Olun, Usta Çalışıyor!',
+  'Bu Kadar Kolay Olmamalıydı!',
+  'Ağlara İmzamı Attım!',
+  'Kaleci Heykel Gibi Kaldı!',
+  'Şimdi Kim Kimi Yeniyor?',
+  'Tribünler Ayakta, Rakip Yerde!',
+  'Yine Ben, Yine Gol!',
+  'Kalecinin Eldivenleri Emekli Oldu!',
+]);
+
+export function goalTaunt(index) {
+  return GOAL_TAUNTS[Number.isInteger(index) && index >= 0 ? index % GOAL_TAUNTS.length : 0];
+}

@@ -34,22 +34,24 @@ shareable invitation flow.
 1. Open `chrome://extensions`.
 2. Enable Developer mode.
 3. Choose **Load unpacked** and select this repository root.
-4. Click the extension icon, enter a server address and name, select a slot and
-   press **HAZIRIM**.
+4. Click the extension icon, enter your name, select a slot and press **HAZIRIM**.
 
-The default address is a convenience value only; successful addresses are saved
-locally. Use `ws://<LAN-IP>:3000` for another machine on the same LAN.
+The server address is not shown in the UI. The extension connects to the fixed
+LAN address in `src/core/config.js` (`DEFAULT_SERVER_URL`); the page served by
+the game server connects back to its own host.
 
 ## Running the server
 
 ```powershell
-cd server
-npm install
+npm install --prefix server
 npm start
 ```
 
-The server listens on `0.0.0.0` and prints localhost and discovered LAN WebSocket
-URLs. `PORT=4000 npm start` changes the port; in PowerShell use
+The server listens on `0.0.0.0`, prints localhost and LAN URLs, serves the game
+at the root URL (for example `http://10.17.12.93:3000/`) and opens that URL in
+the default browser. Everyone else on the LAN opens the same address. Set
+`OPEN_BROWSER=0` to skip opening a browser (e.g. on a headless machine).
+`PORT=4000 npm start` changes the port; in PowerShell use
 `$env:PORT=4000; npm start`. Open the matching inbound TCP firewall port when
 other devices need to connect.
 

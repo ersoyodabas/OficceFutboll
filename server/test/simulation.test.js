@@ -8,7 +8,7 @@ import { createMatchManager } from '../gameplay/matchManager.js';
 import { createSimulation } from '../gameplay/simulation.js';
 import { recordBallTouch } from '../gameplay/ballTouches.js';
 import { BALL_R, HALF_W, HALF_L, GOAL_HALF_W, FIELD } from '../../shared/field.js';
-import { PLAYER_SPEED, MATCH_DURATION_SECONDS, MATCH_END_PAUSE_SECONDS, GOAL_PAUSE_SECONDS, KICKOFF_PAUSE_SECONDS } from '../core/config.js';
+import { PLAYER_SPEED, MATCH_DURATION_SECONDS, MATCH_END_PAUSE_SECONDS, GOAL_PAUSE_SECONDS, KICKOFF_PAUSE_SECONDS, SHOT_MIN_POWER, SHOT_MIN_LIFT } from '../core/config.js';
 
 function fixture(t) {
   let now = 100000;
@@ -30,11 +30,12 @@ function fixture(t) {
 test('movement remains normalized and action power/cooldowns are server-owned', (t) => {
   const { state, players, actions, messages } = fixture(t);
   const player = state.clients.get('blue');
-  const initial = { ...player.pos };
   player.input = { x: 1, z: 1, sprint: false };
-  players.applyPlayerControl(player, .1);
-  assert.ok(Math.abs(Math.hypot(player.pos.x - initial.x, player.pos.z - initial.z) - PLAYER_SPEED * .1) < 1e-8);
-  for (const [key, action, horizontal, vertical] of [['A', 'pass', 16, .35], ['S', 'shot', 22, 2.8], ['D', 'cross', 16, 7.2]]) {
+  for (let i = 0; i < 120; i++) players.applyPlayerControl(player, 1 / 60);
+  // Diagonal input reaches, but never exceeds, the jog cap along the input direction.
+  assert.ok(Math.abs(Math.hypot(player.vel.x, player.vel.z) - PLAYER_SPEED) < 1e-8);
+  assert.ok(Math.abs(player.facing.x - Math.SQRT1_2) < 1e-9 && Math.abs(player.facing.z - Math.SQRT1_2) < 1e-9);
+  for (const [key, action, horizontal, vertical] of [['A', 'pass', 16, .35], ['S', 'shot', SHOT_MIN_POWER, SHOT_MIN_LIFT], ['D', 'cross', 16, 7.2]]) {
     state.ballBody.position.set(player.pos.x, BALL_R, player.pos.z);
     state.ballBody.velocity.set(0, 0, 0);
     state.ballOwnerId = player.id;
@@ -54,7 +55,8 @@ test('slide direction and ball capture survive module boundaries', (t) => {
   const { state, players, actions, advance, messages } = fixture(t);
   const player = state.clients.get('blue');
   player.input = { x: 1, z: 0, sprint: false };
-  players.applyPlayerControl(player, .1);
+  // Turning takes time now; let the body come round to the input before sliding.
+  for (let i = 0; i < 60; i++) players.applyPlayerControl(player, 1 / 60);
   actions.performAction(player, 'D');
   assert.equal(messages.at(-1).action, 'slide_tackle');
   assert.deepEqual(player.slideDirection, { x: 1, z: 0 });

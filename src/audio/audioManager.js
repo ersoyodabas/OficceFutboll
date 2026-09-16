@@ -3,6 +3,7 @@ import { assetUrl } from '../engine/assetLoader.js';
 const LOBBY_MUSIC_URL = assetUrl('audio/lobby-music.mp3');
 const GOAL_SFX_URL = assetUrl('audio/goal.mp3');
 const WHISTLE_SFX_URL = assetUrl('audio/whistle.mp3');
+const CROWD_AMBIENCE_URL = assetUrl('audio/taraftar.mp3');
 
 // Short procedural SFX built from raw waveform math so no extra audio assets are needed.
 function makeBuffer(context, duration, fill) {
@@ -37,6 +38,8 @@ function loadSfxBuffer(context, url) {
 export function createAudioManager({ events, preferences, audioContextFactory = () => new AudioContext() }) {
   const subscriptions = new Set();
   let context = null, master = null, music = null, sfx = null, element = null, sfxBuffers = null, playing = false, lobbyActive = false;
+  // Stadium crowd loop: its own gain under master and one element for the whole session.
+  let crowd = null, crowdElement = null, crowdPlaying = false, matchActive = false;
 
   function ensureContext() {
     if (context) return context;
@@ -46,6 +49,10 @@ export function createAudioManager({ events, preferences, audioContextFactory = 
     element = new Audio(LOBBY_MUSIC_URL);
     element.loop = true; element.preload = 'auto';
     context.createMediaElementSource(element).connect(music);
+    crowd = context.createGain(); crowd.connect(master);
+    crowdElement = new Audio(CROWD_AMBIENCE_URL);
+    crowdElement.loop = true; crowdElement.preload = 'auto';
+    context.createMediaElementSource(crowdElement).connect(crowd);
     sfxBuffers = buildSfxBuffers(context);
     loadSfxBuffer(context, GOAL_SFX_URL).then((buffer) => { sfxBuffers.goal = buffer; }).catch(() => {});
     loadSfxBuffer(context, WHISTLE_SFX_URL).then((buffer) => { sfxBuffers.whistle = buffer; }).catch(() => {});
@@ -58,6 +65,7 @@ export function createAudioManager({ events, preferences, audioContextFactory = 
     master.gain.setTargetAtTime(value.masterVolume, now, .04);
     music.gain.setTargetAtTime(value.lobbyMusicEnabled ? value.lobbyMusicVolume : 0, now, .04);
     sfx.gain.setTargetAtTime(value.lobbyMusicVolume, now, .04);
+    crowd.gain.setTargetAtTime(value.crowdVolume, now, .04);
     if (!value.lobbyMusicEnabled) stopLobbyTheme();
     else if (lobbyActive && context.state === 'running') startLobbyTheme();
   }
@@ -68,6 +76,13 @@ export function createAudioManager({ events, preferences, audioContextFactory = 
     element.play().catch(() => { playing = false; });
   }
   function stopLobbyTheme() { if (!playing) return; playing = false; element.pause(); }
+  function startCrowd() {
+    if (crowdPlaying || !matchActive || !context || context.state !== 'running') return;
+    crowdPlaying = true;
+    crowdElement.currentTime = 0;
+    crowdElement.play().catch(() => { crowdPlaying = false; });
+  }
+  function stopCrowd() { if (!crowdPlaying) return; crowdPlaying = false; crowdElement.pause(); }
   function playSfx(type) {
     let audioContext;
     try { audioContext = ensureContext(); } catch { return; }
@@ -87,10 +102,18 @@ export function createAudioManager({ events, preferences, audioContextFactory = 
     const audio = ensureContext();
     if (audio.state !== 'running') await audio.resume();
     if (lobbyActive) startLobbyTheme();
+    if (matchActive) startCrowd();
+  }
+  // True only while the match pitch is on screen (playing, goal celebration, kickoff).
+  function setMatchActive(value) {
+    matchActive = !!value;
+    if (!matchActive) { stopCrowd(); return; }
+    try { ensureContext(); } catch { return; }
+    startCrowd();
   }
   function setLobbyActive(value) { lobbyActive = !!value; if (!lobbyActive) stopLobbyTheme(); else if (context?.state === 'running') startLobbyTheme(); }
   function registerCue(event, callback) { const unsubscribe = events.on(event, callback); subscriptions.add(unsubscribe); return () => { unsubscribe(); subscriptions.delete(unsubscribe); }; }
   const unsubscribePreferences = preferences.subscribe(applyPreferences);
-  function dispose() { stopLobbyTheme(); unsubscribePreferences(); for (const unsubscribe of subscriptions) unsubscribe(); subscriptions.clear(); context?.close(); }
-  return { unlock, setLobbyActive, registerCue, playSfx, dispose };
+  function dispose() { stopLobbyTheme(); matchActive = false; stopCrowd(); unsubscribePreferences(); for (const unsubscribe of subscriptions) unsubscribe(); subscriptions.clear(); context?.close(); }
+  return { unlock, setLobbyActive, setMatchActive, registerCue, playSfx, dispose };
 }

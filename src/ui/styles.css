@@ -83,6 +83,32 @@ html, body {
   }
   #scoreBug .clock.low { color: #ff6b6b; }
 
+  /* Segmented shot charge bar, positioned above the controlled player's name tag
+     each frame. Ten blocks fill left → right: green, yellow, orange, red. */
+  .shot-power {
+    position: absolute;
+    left: 0; top: 0;
+    display: flex;
+    gap: 3px;
+    padding: 4px;
+    border-radius: 5px;
+    background: rgba(4, 8, 6, 0.72);
+    box-shadow: 0 0 0 1px rgba(255,255,255,0.28), 0 4px 14px rgba(0,0,0,0.55);
+    pointer-events: none;
+    z-index: 5;
+  }
+  .shot-power-segment {
+    --fill: 0;
+    --segment-color: #2fd35a;
+    width: 13px; height: 16px;
+    border-radius: 2px;
+    background: linear-gradient(to right, var(--segment-color) calc(var(--fill) * 100%), rgba(255,255,255,0.1) 0);
+  }
+  .shot-power-segment:nth-child(n+4) { --segment-color: #ffd23f; }
+  .shot-power-segment:nth-child(n+6) { --segment-color: #ff8a1f; }
+  .shot-power-segment:nth-child(n+8) { --segment-color: #ff2e2e; }
+  .shot-power.max { box-shadow: 0 0 0 2px #ff4d4d, 0 0 18px rgba(255, 40, 40, 0.8); }
+
   #hint {
     position: absolute;
     bottom: calc(14px + env(safe-area-inset-bottom, 0px));
@@ -324,6 +350,8 @@ html, body {
   .range-setting, .toggle-setting { margin-top: 16px; font-size: 14px; }
   .range-setting output { min-width: 42px; color: #7be0b6; font-weight: 800; text-align: right; }
   .settings-card input[type="range"] { width: 100%; accent-color: #7be0b6; }
+  .volume-slider { display: flex; align-items: center; gap: 10px; margin-top: 6px; }
+  .volume-slider span { font-size: 16px; }
   .toggle-setting input { width: 18px; height: 18px; accent-color: #7be0b6; }
   .settings-note, #keyCaptureStatus { min-height: 18px; margin: 10px 0 0; color: #a8bdce; font-size: 12px; }
   .key-binding-row { padding: 10px 0; border-bottom: 1px solid #ffffff10; font-size: 13px; }

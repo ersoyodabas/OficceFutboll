@@ -2,13 +2,45 @@ import { clubIdentity, defaultClubSelections } from '../../shared/clubs.js';
 import { validateClubSelections } from '../../shared/kitClash.js';
 import { matchSnapshot } from './snapshot.js';
 import { SERVER } from '../../src/network/protocol.js';
-import { GOAL_PAUSE_SECONDS, KICKOFF_PAUSE_SECONDS, WIN_SCORE, MATCH_END_PAUSE_SECONDS, MATCH_DURATION_SECONDS } from '../core/config.js';
-import { HALF_L, BALL_R } from '../../shared/field.js';
+import { GOAL_PAUSE_SECONDS, KICKOFF_PAUSE_SECONDS, WIN_SCORE, MATCH_END_PAUSE_SECONDS, MATCH_DURATION_SECONDS,
+  OUT_OF_PLAY_SECONDS, GOAL_KICK_DISTANCE, GOAL_KICK_MAX_SIDE, GOAL_KICK_KEEPER_OFFSET } from '../core/config.js';
+import { HALF_L, BALL_R, FIELD } from '../../shared/field.js';
+import { GOAL_TAUNTS } from '../../shared/goalTaunts.js';
 export function createMatchManager({ state, broadcast, broadcastLobby, buildWorld, placeAllPlayers }) {
 function clearGoalSequence() {
   state.goalEvent = null;
+  state.outEvent = null;
   state.kickoffEndsAt = 0;
+  state.ballPrevPosition = null;
   state.lastTouches = { blue: null, red: null };
+}
+
+// Freezes every player and the ball at a stoppage (goal or out of play).
+function stopPlay() {
+  state.ballBody.velocity.set(0, 0, 0);
+  state.ballBody.angularVelocity.set(0, 0, 0);
+  state.ballOwnerId = null;
+  for (const c of state.clients.values()) {
+    c.input = { x: 0, z: 0, sprint: false };
+    c.vel = { x: 0, z: 0 };
+    c.slideRemaining = c.recoveryRemaining = c.standingActive = 0;
+    c.slideDirection = c.lastAction = c.shotCharge = c.keeperDive = null;
+  }
+}
+
+// Puts the ball exactly at a restart spot with no leftover motion or spin.
+function placeBall(x, z) {
+  const ball = state.ballBody;
+  ball.position.set(x, BALL_R, z);
+  ball.previousPosition.copy(ball.position);
+  ball.interpolatedPosition.copy(ball.position);
+  ball.velocity.set(0, 0, 0);
+  ball.angularVelocity.set(0, 0, 0);
+  ball.force.set(0, 0, 0);
+  ball.torque.set(0, 0, 0);
+  ball.quaternion.set(0, 0, 0, 1);
+  ball.aabbNeedsUpdate = true;
+  state.ballPrevPosition = null;
 }
 function startMatch() {
   if (validateClubSelections(state.teams)) {
@@ -88,19 +120,12 @@ function confirmGoal(teamId, now = Date.now()) {
   state.goalEvent = {
     id: ++state.goalSequence, teamId, teamName: identity.name, teamInitials: identity.initials, teamColor: identity.color, teams: state.teams,
     teamLogo: identity.logo, scorerId: scorer?.id ?? null, scorerName: scorer?.name ?? null,
+    tauntIndex: Math.floor(Math.random() * GOAL_TAUNTS.length),
     score: { ...state.score }, startedAt: now, endsAt: now + GOAL_PAUSE_SECONDS * 1000,
     position: { x: state.ballBody.position.x, z: state.ballBody.position.z },
   };
   state.phase = 'goalCelebration';
-  state.ballBody.velocity.set(0, 0, 0);
-  state.ballBody.angularVelocity.set(0, 0, 0);
-  state.ballOwnerId = null;
-  for (const c of state.clients.values()) {
-    c.input = { x: 0, z: 0, sprint: false };
-    c.vel = { x: 0, z: 0 };
-    c.slideRemaining = c.recoveryRemaining = c.standingActive = 0;
-    c.slideDirection = c.lastAction = null;
-  }
+  stopPlay();
   broadcast({ type: SERVER.GOAL, ...matchSnapshot(state, now) });
   broadcastLobby();
   return true;
@@ -108,16 +133,7 @@ function confirmGoal(teamId, now = Date.now()) {
 
 function resetAfterGoal(scorerTeam, now = Date.now()) {
   state.pendingServe = scorerTeam === 'blue' ? 'red' : 'blue';
-  const ball = state.ballBody;
-  ball.position.set(0, BALL_R, 0);
-  ball.previousPosition.copy(ball.position);
-  ball.interpolatedPosition.copy(ball.position);
-  ball.velocity.set(0, 0, 0);
-  ball.angularVelocity.set(0, 0, 0);
-  ball.force.set(0, 0, 0);
-  ball.torque.set(0, 0, 0);
-  ball.quaternion.set(0, 0, 0, 1);
-  ball.aabbNeedsUpdate = true;
+  placeBall(0, 0);
   state.ballOwnerId = null;
   state.looseBallUntil = 0;
   state.lastTouches = { blue: null, red: null };
@@ -152,6 +168,57 @@ function advanceGoalSequence(now) {
     broadcast({ type: SERVER.STATE, ...matchSnapshot(state, now) });
     broadcastLobby();
   }
+}
+
+// ---------- Out of play (AUT) → goal kick ----------
+// crossing: { end, x, y } from goalLine.js. Play stops where it is and every
+// client shows the AUT notice for OUT_OF_PLAY_SECONDS.
+function declareOutOfPlay(crossing, now = Date.now()) {
+  if (state.phase !== 'playing' || !state.ballBody) return false;
+  // Blue defends the +Z goal, red the -Z goal.
+  const defendingTeam = crossing.end > 0 ? 'blue' : 'red';
+  state.outEvent = {
+    id: ++state.outSequence, defendingTeam, restart: 'goalKick',
+    startedAt: now, endsAt: now + OUT_OF_PLAY_SECONDS * 1000,
+    position: { x: crossing.x, y: crossing.y, z: crossing.end * HALF_L },
+  };
+  state.phase = 'outOfPlay';
+  stopPlay();
+  broadcast({ type: SERVER.OUT_OF_PLAY, ...matchSnapshot(state, now) });
+  return true;
+}
+
+function advanceOutOfPlay(now) {
+  if (state.phase !== 'outOfPlay' || now < state.outEvent.endsAt) return;
+  if (now >= state.matchEndsAt) endMatch();
+  else goalKickRestart(now);
+}
+
+// The defending goalkeeper restarts from inside their penalty area, on the side
+// the ball went out. Attackers are moved out of the penalty area first.
+function goalKickRestart(now) {
+  const team = state.outEvent.defendingTeam;
+  const goalSign = team === 'blue' ? 1 : -1;
+  const ballX = Math.max(-GOAL_KICK_MAX_SIDE, Math.min(GOAL_KICK_MAX_SIDE, state.outEvent.position.x));
+  const ballZ = goalSign * (HALF_L - GOAL_KICK_DISTANCE);
+  placeBall(ballX, ballZ);
+  const boxEdgeZ = HALF_L - FIELD.PENALTY_DEPTH;
+  for (const c of state.clients.values()) {
+    if (!c.inMatch || c.team === team) continue;
+    if (Math.abs(c.pos.x) < FIELD.PENALTY_HALF_W + 1 && c.pos.z * goalSign > boxEdgeZ - 1) c.pos.z = goalSign * (boxEdgeZ - 1.5);
+  }
+  const keeper = [...state.clients.values()].find((c) => c.inMatch && c.team === team && c.position === 'KL' && c.isAI)
+    || [...state.clients.values()].find((c) => c.inMatch && c.team === team && c.slot === 0);
+  if (keeper) {
+    keeper.pos = { x: ballX, z: ballZ + goalSign * GOAL_KICK_KEEPER_OFFSET };
+    keeper.facing = { x: 0, z: -goalSign };
+    keeper.vel = { x: 0, z: 0 };
+    keeper.keeperPossessionStartedAt = now;
+    state.ballOwnerId = keeper.id;
+  }
+  state.looseBallUntil = 0;
+  state.phase = 'playing';
+  broadcast({ type: SERVER.GOAL_KICK, ...matchSnapshot(state, now) });
 }
 
 function endMatch() {
@@ -194,5 +261,5 @@ function backToLobby() {
   broadcastLobby();
 }
 
-return { startMatch, confirmGoal, advanceGoalSequence, resetAfterGoal, endMatch, abortMatchToLobby, backToLobby };
+return { startMatch, confirmGoal, advanceGoalSequence, resetAfterGoal, declareOutOfPlay, advanceOutOfPlay, endMatch, abortMatchToLobby, backToLobby };
 }

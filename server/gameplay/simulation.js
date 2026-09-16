@@ -1,19 +1,18 @@
 import { matchSnapshot } from './snapshot.js';
+import { classifyGoalLineCrossing } from './goalLine.js';
 import { isMatchPhase } from '../../shared/matchPhases.js';
 import { SERVER } from '../../src/network/protocol.js';
-import { TICK_HZ, BROADCAST_HZ, WIN_SCORE, MAX_BALL_SPEED, MAX_BALL_HEIGHT } from '../core/config.js';
-import { HALF_W, HALF_L, GOAL_HALF_W, GOAL_HEIGHT, BALL_R } from '../../shared/field.js';
+import { BROADCAST_HZ, WIN_SCORE, MAX_BALL_SPEED, MAX_BALL_HEIGHT, PHYSICS_STEP, PHYSICS_MAX_SUBSTEPS } from '../core/config.js';
+import { HALF_W, BALL_R } from '../../shared/field.js';
 export function createSimulation({ state, broadcast, players, physics, actions, match }) {
 let lastTick = Date.now();
 let broadcastAccum = 0;
 
-function containBallWithinPitch() {
+// Touchlines stay walled (no throw-ins). Goal lines are open: crossing them is
+// judged by classifyGoalLineCrossing as a goal or out of play.
+function containBallWithinTouchlines() {
   const ball = state.ballBody;
   const maxX = HALF_W - BALL_R;
-  const maxZ = HALF_L - BALL_R;
-  const goalOpeningHalfWidth = GOAL_HALF_W - BALL_R;
-  const ballUnderCrossbar = ball.position.y <= GOAL_HEIGHT - BALL_R;
-
   if (ball.position.x < -maxX) {
     ball.position.x = -maxX;
     if (ball.velocity.x < 0) ball.velocity.x *= -.45;
@@ -21,20 +20,6 @@ function containBallWithinPitch() {
     ball.position.x = maxX;
     if (ball.velocity.x > 0) ball.velocity.x *= -.45;
   }
-
-  // Sliding tackles and possession control move the ball after Cannon's world
-  // step. At an end-line wall that direct correction can otherwise teleport the
-  // ball completely through the collider. Only the real goal opening stays open.
-  const canEnterGoal = Math.abs(ball.position.x) < goalOpeningHalfWidth && ballUnderCrossbar;
-  if (!canEnterGoal && ball.position.z < -maxZ) {
-    ball.position.z = -maxZ;
-    if (ball.velocity.z < 0) ball.velocity.z *= -.45;
-  } else if (!canEnterGoal && ball.position.z > maxZ) {
-    ball.position.z = maxZ;
-    if (ball.velocity.z > 0) ball.velocity.z *= -.45;
-  }
-
-  return { ballUnderCrossbar, goalOpeningHalfWidth };
 }
 
 function tick() {
@@ -47,29 +32,41 @@ function tick() {
     if (state.countdownRemaining <= 0) match.startMatch();
   } else if (state.phase === 'goalCelebration' || state.phase === 'kickoff') {
     match.advanceGoalSequence(now);
+  } else if (state.phase === 'outOfPlay') {
+    match.advanceOutOfPlay(now);
   } else if (state.phase === 'playing') {
+    // Where the ball was before this tick: goal-line and goalkeeper checks use
+    // the whole path, so a fast ball cannot skip past a line or a keeper.
+    const ball = state.ballBody;
+    const previous = state.ballPrevPosition || { x: ball.position.x, y: ball.position.y, z: ball.position.z };
+    state.ballPrevPosition = previous;
+
+    actions.updateShotCharges(dt);
     for (const c of state.clients.values()) players.applyPlayerControl(c, dt);
-    state.world.step(1 / TICK_HZ, dt, 5);
+    physics.applyMagnus(dt);
+    state.world.step(PHYSICS_STEP, dt, PHYSICS_MAX_SUBSTEPS);
     actions.updateBallControl(dt);
     for (const c of state.clients.values()) physics.resolvePlayerBallContact(c);
+    containBallWithinTouchlines();
 
-    const { ballUnderCrossbar, goalOpeningHalfWidth } = containBallWithinPitch();
-
-    if (state.ballBody.velocity.length() > MAX_BALL_SPEED) {
-      state.ballBody.velocity.scale(MAX_BALL_SPEED / state.ballBody.velocity.length(), state.ballBody.velocity);
+    if (ball.velocity.length() > MAX_BALL_SPEED) {
+      ball.velocity.scale(MAX_BALL_SPEED / ball.velocity.length(), ball.velocity);
     }
-    if (state.ballBody.position.y > MAX_BALL_HEIGHT) {
-      state.ballBody.position.y = MAX_BALL_HEIGHT;
-      if (state.ballBody.velocity.y > 0) state.ballBody.velocity.y = 0;
+    if (ball.position.y > MAX_BALL_HEIGHT) {
+      ball.position.y = MAX_BALL_HEIGHT;
+      if (ball.velocity.y > 0) ball.velocity.y = 0;
     }
 
-    if (state.ballBody.position.z > HALF_L - BALL_R && Math.abs(state.ballBody.position.x) < goalOpeningHalfWidth && ballUnderCrossbar) {
-      match.confirmGoal('red', now);
-    } else if (state.ballBody.position.z < -HALF_L + BALL_R && Math.abs(state.ballBody.position.x) < goalOpeningHalfWidth && ballUnderCrossbar) {
-      match.confirmGoal('blue', now);
-    } else if (Math.abs(state.ballBody.position.z) > HALF_L + 2 || state.ballBody.position.y < -5) {
+    const crossing = classifyGoalLineCrossing(previous, ball.position, dt);
+    if (crossing?.goal) {
+      // Ball over the +Z line scores for red (blue defends +Z), and vice versa.
+      match.confirmGoal(crossing.end > 0 ? 'red' : 'blue', now);
+    } else if (crossing) {
+      match.declareOutOfPlay(crossing, now);
+    } else if (ball.position.y < -5) {
       match.resetAfterGoal(state.pendingServe === 'blue' ? 'red' : 'blue');
     }
+    state.ballPrevPosition = state.ballBody ? { x: ball.position.x, y: ball.position.y, z: ball.position.z } : null;
 
     if (state.phase === 'playing' && (state.score.blue >= WIN_SCORE || state.score.red >= WIN_SCORE || now >= state.matchEndsAt)) match.endMatch();
   } else if (state.phase === 'ended') {

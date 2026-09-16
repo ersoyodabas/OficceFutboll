@@ -111,7 +111,7 @@ test('two clients share selection, ready, cancellation, match and snapshots', { 
   assert.equal(kickoffA.kickoffTeam, 'red');
   assert.equal(kickoffA.players.find((p) => p.hasBall).id, b.id);
   assert.ok(kickoffA.serverTime >= goalA.goalEvent.endsAt);
-  assert.deepEqual(kickoffA.ball, { x: 0, y: BALL_R, z: 0, vx: 0, vy: 0, vz: 0 });
+  assert.deepEqual(kickoffA.ball, { x: 0, y: BALL_R, z: 0, vx: 0, vy: 0, vz: 0, wx: 0, wy: 0, wz: 0 });
   await a.wait((m) => m.type === SERVER.STATE && m.phase === 'playing', a.messages.length);
   assert.equal(a.messages.filter((m) => m.type === SERVER.GOAL).length, 1);
 

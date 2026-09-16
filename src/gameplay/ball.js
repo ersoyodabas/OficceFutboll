@@ -31,8 +31,9 @@ ball.position.set(0, BALL_R, 0);
 // rendering scale only — server physics still uses BALL_R for its collider
 ball.scale.setScalar(BALL_VISUAL_SCALE);
 scene.add(ball);
-const ballNet = { serverPos: new THREE.Vector3(0, BALL_R, 0), serverVel: new THREE.Vector3(), lastUpdate: performance.now() };
+const ballNet = { serverPos: new THREE.Vector3(0, BALL_R, 0), serverVel: new THREE.Vector3(), serverSpin: new THREE.Vector3(), lastUpdate: performance.now() };
 const _predicted = new THREE.Vector3();
+const _axis = new THREE.Vector3();
 function update(dt, now) {
     const elapsed = (now - ballNet.lastUpdate) / 1000;
     _predicted.set(
@@ -41,16 +42,21 @@ function update(dt, now) {
       ballNet.serverPos.z + ballNet.serverVel.z * elapsed
     );
     ball.position.lerp(_predicted, Math.min(1, dt * 14));
-    const ballSpeed = ballNet.serverVel.length();
-    if (ballSpeed > 0.05) {
-      const axis = new THREE.Vector3(-ballNet.serverVel.z, 0, ballNet.serverVel.x).normalize();
-      ball.rotateOnWorldAxis(axis, (ballSpeed * dt) / BALL_R);
+    // Rotate with the server's angular velocity (sidespin on curled shots,
+    // rolling spin from ground contact). Dribbled balls are driven by velocity
+    // on the server, so fall back to rolling with velocity when spin is ~0.
+    const spin = ballNet.serverSpin.length();
+    if (spin > 0.05) {
+      ball.rotateOnWorldAxis(_axis.copy(ballNet.serverSpin).divideScalar(spin), spin * dt);
+    } else {
+      const ballSpeed = ballNet.serverVel.length();
+      if (ballSpeed > 0.05) ball.rotateOnWorldAxis(_axis.set(ballNet.serverVel.z, 0, -ballNet.serverVel.x).normalize(), (ballSpeed * dt) / BALL_R);
     }
-
 }
 function applySnapshot(snapshot, snap = false) {
 ballNet.serverPos.set(snapshot.x, snapshot.y, snapshot.z);
 ballNet.serverVel.set(snapshot.vx, snapshot.vy, snapshot.vz);
+ballNet.serverSpin.set(snapshot.wx || 0, snapshot.wy || 0, snapshot.wz || 0);
 ballNet.lastUpdate = performance.now();
 if (snap) { ball.position.copy(ballNet.serverPos); ball.quaternion.set(0, 0, 0, 1); }
 }
