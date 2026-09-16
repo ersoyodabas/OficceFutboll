@@ -14,6 +14,6 @@ export const SERVER = Object.freeze({
   LOBBY_RETURNED: 'lobby_returned', COUNTDOWN_START: 'countdownStart',
   COUNTDOWN_CANCELLED: 'countdownCancelled', MATCH_START: 'matchStart',
   STATE: 'state', ACTION_RESULT: 'actionResult', MATCH_END: 'match_end',
-  GOAL: 'goal', KICKOFF_RESET: 'kickoffReset', OUT_OF_PLAY: 'outOfPlay', GOAL_KICK: 'goalKick',
+  GOAL: 'goal', KICKOFF_RESET: 'kickoffReset', OUT_OF_PLAY: 'outOfPlay', RESTART: 'restart',
   NEW_CHAT_MESSAGE: 'new_chat_message', LOBBY_SFX: 'lobby_sfx',
 });

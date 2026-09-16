@@ -1,11 +1,12 @@
 import { THREE } from '../engine/three.js';
-import { FIELD, HALF_L, GOAL_HALF_W } from '../../shared/field.js';
+import { FIELD, HALF_L, GOAL_HALF_W, GOAL_POST_R } from '../../shared/field.js';
 import { makeCanvasTexture } from '../engine/assetLoader.js';
 
 // Regulation goals (7.32 m × 2.44 m inside the posts, 12 cm frame) with a deep
 // box net: the top net runs back 1.5 m, the back net slopes down to 2 m behind
 // the goal line, held by thin rear stanchions and ground bars.
-const POST_R = 0.06;
+// Same frame radius as the server physics posts and crossbar.
+const POST_R = GOAL_POST_R;
 const SUPPORT_R = 0.022;
 const TOP_DEPTH = 1.5;
 const BOTTOM_DEPTH = 2.0;

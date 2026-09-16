@@ -1,13 +1,14 @@
 import { recordBallTouch } from './ballTouches.js';
 import { SERVER } from '../../src/network/protocol.js';
 import { POSSESSION_RANGE, ACTION_RANGE, STANDING_TACKLE_RANGE, SLIDE_DURATION, SLIDE_FOOT_OFFSET, SLIDE_BALL_CAPTURE_RADIUS, SLIDE_BALL_CONTROL_OFFSET, ACTION_COOLDOWNS, STANDING_TACKLE_COOLDOWN, SLIDE_TACKLE_COOLDOWN, AI_KEEPER_DISTRIBUTION_DELAY, AI_KEEPER_PASS_DISTANCE,
-  SHOT_MIN_SPEED, SHOT_MAX_SPEED, SHOT_SPEED_EXPONENT, SHOT_MIN_LIFT, SHOT_MAX_LIFT, SHOT_LIFT_EXPONENT, SHOT_INACCURACY_FROM_CHARGE, SHOT_MAX_INACCURACY_DEG,
-  SHOT_CURVE_RESPONSE, MAX_SHOT_SPIN, SHOT_CURL_LAUNCH_ANGLE_DEG,
+  SHOT_MIN_SPEED, SHOT_MAX_SPEED, SHOT_SPEED_EXPONENT, SHOT_MIN_LIFT, SHOT_MAX_LIFT, SHOT_LIFT_EXPONENT, SHOT_LIFT_VARIATION_FROM_CHARGE, SHOT_MAX_LIFT_VARIATION,
+  SHOT_AIM_RESPONSE, SHOT_AIM_MAX_DEG, MAX_SHOT_SPIN, SHOT_CURL_LAUNCH_ANGLE_DEG, KICK_RETAINED_VELOCITY, SHOT_LIFTOFF_HEIGHT,
   KEEPER_REACTION_MS, KEEPER_MAX_DIVE, KEEPER_BODY_REACH, KEEPER_DIVE_REACH, KEEPER_REACH_HEIGHT, KEEPER_CATCH_MAX_SPEED,
-  KEEPER_PARRY_RESTITUTION, KEEPER_COLLECT_RANGE, KEEPER_COLLECT_MAX_SPEED } from '../core/config.js';
+  KEEPER_PARRY_RESTITUTION, KEEPER_COLLECT_RANGE, KEEPER_COLLECT_MAX_SPEED, KEEPER_BODY_DEPTH } from '../core/config.js';
 import { shotChargeLevel, SHOT_MAX_CHARGE_MS } from '../../shared/shot.js';
 import { BALL_R, HALF_L, GOAL_HALF_W } from '../../shared/field.js';
 import { isTeleport } from './goalLine.js';
+import { aimAtCorner } from './shotAim.js';
 import * as CANNON from 'cannon-es';
 export function createActions({ state, broadcast }) {
 function ballDistance(c) {
@@ -27,7 +28,7 @@ function releaseBall(duration = 280) {
 
 // Every kick starts from a clean spin state; only shots add sidespin afterwards.
 function applyBallImpulse(x, y, z) {
-  state.ballBody.velocity.scale(.35, state.ballBody.velocity);
+  state.ballBody.velocity.scale(KICK_RETAINED_VELOCITY, state.ballBody.velocity);
   state.ballBody.angularVelocity.set(0, 0, 0);
   state.ballBody.applyImpulse(new CANNON.Vec3(x * state.ballBody.mass, y * state.ballBody.mass, z * state.ballBody.mass));
 }
@@ -46,19 +47,25 @@ function lateralInput(c) {
   return (-input.x * c.facing.z + input.z * c.facing.x) / length;
 }
 
-// Charge (0..1) sets speed and vertical lift on separate curves: speed builds
-// early, lift late, so strong charges also rise more and can clear the bar.
-function shotParameters(charge, curveIntent, random = Math.random) {
+// Charge (0..1) sets speed and lift; aim intent (-1 left .. +1 right, relative
+// to the shooter) turns the shot a few degrees from the facing. There is no
+// random sideways deviation: a straight-facing shot with no aim input goes
+// straight. Only the lift of near-full-power strikes varies, so rockets can fly
+// over the bar. With enough charge, shoot() then steers aimed shots toward an
+// upper corner (shotAim.js).
+function shotParameters(charge, aimIntent, random = Math.random) {
   const level = Math.min(Math.max(charge, 0), 1);
-  const curve = Math.min(Math.max(curveIntent, -1), 1);
-  const wobble = Math.max(0, (level - SHOT_INACCURACY_FROM_CHARGE) / (1 - SHOT_INACCURACY_FROM_CHARGE));
+  const aim = Math.min(Math.max(aimIntent, -1), 1);
+  const variation = Math.max(0, (level - SHOT_LIFT_VARIATION_FROM_CHARGE) / (1 - SHOT_LIFT_VARIATION_FROM_CHARGE));
+  const baseLift = SHOT_MIN_LIFT + (SHOT_MAX_LIFT - SHOT_MIN_LIFT) * Math.pow(level, SHOT_LIFT_EXPONENT);
   return {
     speed: SHOT_MIN_SPEED + (SHOT_MAX_SPEED - SHOT_MIN_SPEED) * Math.pow(level, SHOT_SPEED_EXPONENT),
-    lift: SHOT_MIN_LIFT + (SHOT_MAX_LIFT - SHOT_MIN_LIFT) * Math.pow(level, SHOT_LIFT_EXPONENT),
-    // Launch a little to the outside of the curve so the spin bends it back in.
-    yaw: (-curve * SHOT_CURL_LAUNCH_ANGLE_DEG + (random() * 2 - 1) * wobble * SHOT_MAX_INACCURACY_DEG) * degrees,
-    // Positive spin about +Y curves the ball to the shooter's left, so a right curve spins negative.
-    spin: -curve * MAX_SHOT_SPIN,
+    lift: baseLift * (1 + (random() * 2 - 1) * variation * SHOT_MAX_LIFT_VARIATION),
+    // Launched just inside the aim line; the sidespin curls it out to the aim.
+    yaw: aim * (SHOT_AIM_MAX_DEG - SHOT_CURL_LAUNCH_ANGLE_DEG) * degrees,
+    // Positive spin about +Y curves the ball to the shooter's left, so aiming right spins negative.
+    spin: -aim * MAX_SHOT_SPIN,
+    aim,
   };
 }
 
@@ -72,12 +79,19 @@ function canAct(c, key, now) {
   return c.inMatch && state.phase === 'playing' && state.ballBody && now >= c.cooldowns[key] && c.slideRemaining <= 0 && c.recoveryRemaining <= 0;
 }
 
+// A player on the ball can always start charging: the S cooldown only limits
+// tackles and repeated taps, and possession itself limits shooting.
+function canCharge(c) {
+  return c.inMatch && state.phase === 'playing' && state.ballBody && c.slideRemaining <= 0 && c.recoveryRemaining <= 0;
+}
+
 function startShotCharge(c) {
   const now = Date.now();
-  if (c.shotCharge || !canAct(c, 'S', now)) return;
+  if (c.shotCharge || !canCharge(c)) return;
   // Without the ball, S keeps meaning a standing tackle.
   if (!hasBall(c) || ballDistance(c) > ACTION_RANGE) { performAction(c, 'S'); return; }
-  c.shotCharge = { startedAt: now, curve: 0 };
+  // Left/right already held when S goes down counts as aim straight away.
+  c.shotCharge = { startedAt: now, aim: lateralInput(c) };
   // startedAt is the single charge timer: clients draw the bar from it.
   broadcast({ type: SERVER.ACTION_RESULT, id: c.id, action: 'shot_charge', success: true, hasBall: true, startedAt: now });
 }
@@ -86,14 +100,21 @@ function releaseShot(c) {
   if (!c.shotCharge) return;
   const now = Date.now();
   const charge = shotChargeLevel(now - c.shotCharge.startedAt);
-  const curve = c.shotCharge.curve;
-  if (!canAct(c, 'S', now) || !hasBall(c) || ballDistance(c) > ACTION_RANGE) { cancelShotCharge(c); return; }
+  const aim = c.shotCharge.aim;
+  if (!canCharge(c) || !hasBall(c) || ballDistance(c) > ACTION_RANGE) { cancelShotCharge(c); return; }
   c.shotCharge = null;
-  shoot(c, charge, curve, now);
+  shoot(c, charge, aim, now);
 }
 
-function shoot(c, charge, curve, now) {
-  const shot = shotParameters(charge, curve);
+function shoot(c, charge, aim, now) {
+  const ball = state.ballBody;
+  // The struck ball leaves the grass at once instead of scraping along it.
+  ball.position.y = Math.max(ball.position.y, BALL_R + SHOT_LIFTOFF_HEIGHT);
+  const shot = aimAtCorner({
+    team: c.team, charge, shot: shotParameters(charge, aim), facing: c.facing,
+    position: { x: ball.position.x, y: ball.position.y, z: ball.position.z },
+    residual: { x: ball.velocity.x, y: ball.velocity.y, z: ball.velocity.z },
+  });
   const cos = Math.cos(shot.yaw), sin = Math.sin(shot.yaw);
   // Rotate the facing toward the shooter's right by yaw (right = (-fz, fx)).
   const dirX = c.facing.x * cos - c.facing.z * sin;
@@ -104,19 +125,19 @@ function shoot(c, charge, curve, now) {
   releaseBall(450);
   c.cooldowns.S = now + ACTION_COOLDOWNS.S * 1000;
   c.lastAction = { type: 'shot', at: now };
-  broadcast({ type: SERVER.ACTION_RESULT, id: c.id, action: 'shot', success: true, hasBall: true, charge, speed: shot.speed, lift: shot.lift, spin: shot.spin });
+  broadcast({ type: SERVER.ACTION_RESULT, id: c.id, action: 'shot', success: true, hasBall: true, charge, speed: shot.speed, lift: shot.lift, aim: shot.aim, spin: shot.spin });
 }
 
 // Keeps charges honest every tick: a lost ball, slide or phase change cancels
-// the charge, held left/right input steers the curve intent within [-1, 1], and
+// the charge, held left/right input steers the aim intent within [-1, 1], and
 // a charge held for the full SHOT_MAX_CHARGE_MS fires at maximum power.
 function updateShotCharges(dt) {
   const now = Date.now();
   for (const c of state.clients.values()) {
     if (!c.shotCharge) continue;
     if (state.phase !== 'playing' || !c.inMatch || c.slideRemaining > 0 || !hasBall(c)) { cancelShotCharge(c); continue; }
-    const blend = 1 - Math.exp(-dt * SHOT_CURVE_RESPONSE);
-    c.shotCharge.curve = Math.min(1, Math.max(-1, c.shotCharge.curve + (lateralInput(c) - c.shotCharge.curve) * blend));
+    const blend = 1 - Math.exp(-dt * SHOT_AIM_RESPONSE);
+    c.shotCharge.aim = Math.min(1, Math.max(-1, c.shotCharge.aim + (lateralInput(c) - c.shotCharge.aim) * blend));
     if (now - c.shotCharge.startedAt >= SHOT_MAX_CHARGE_MS) releaseShot(c);
   }
 }
@@ -139,6 +160,7 @@ function beginSlide(c) {
   c.slideDirection = direction;
   c.facing = { x: direction.x, z: direction.z };
   c.slideRemaining = SLIDE_DURATION;
+  c.turnRate = 0;
 }
 
 function secureBallForKeeper(c) {
@@ -359,15 +381,18 @@ function readShot(c, now) {
 
 // Closest approach of the ball's path this tick to the keeper's vertical body
 // axis, so a fast shot cannot skip through the keeper between two ticks.
+// `approaching` is true when the ball is still getting closer at the end of the
+// tick, i.e. its closest approach has not happened yet.
 function closestApproach(c) {
   const ball = state.ballBody.position, prev = state.ballPrevPosition;
   if (!prev || isTeleport(prev, ball, 1 / 60)) {
-    return { horizontal: Math.hypot(ball.x - c.pos.x, ball.z - c.pos.z), x: ball.x, y: ball.y, z: ball.z };
+    return { horizontal: Math.hypot(ball.x - c.pos.x, ball.z - c.pos.z), x: ball.x, y: ball.y, z: ball.z, approaching: false };
   }
   const dx = ball.x - prev.x, dz = ball.z - prev.z, lengthSq = dx * dx + dz * dz;
-  const t = lengthSq > 1e-9 ? Math.min(1, Math.max(0, ((c.pos.x - prev.x) * dx + (c.pos.z - prev.z) * dz) / lengthSq)) : 1;
+  const raw = lengthSq > 1e-9 ? ((c.pos.x - prev.x) * dx + (c.pos.z - prev.z) * dz) / lengthSq : 1;
+  const t = Math.min(1, Math.max(0, raw));
   const x = prev.x + dx * t, z = prev.z + dz * t, y = prev.y + (ball.y - prev.y) * t;
-  return { horizontal: Math.hypot(x - c.pos.x, z - c.pos.z), x, y, z };
+  return { horizontal: Math.hypot(x - c.pos.x, z - c.pos.z), x, y, z, approaching: raw > 1 };
 }
 
 function keeperHolds(c, now) {
@@ -380,23 +405,33 @@ function keeperHolds(c, now) {
 function updateKeeperAgainstBall(c) {
   const now = Date.now();
   readShot(c, now);
-  if (state.ballOwnerId || now < state.looseBallUntil) return;
+  if (state.ballOwnerId) return;
+  // looseBallUntil stops whoever just kicked the ball from playing it again at
+  // once. It must not blind the keeper to a shot (a rocket from 16 m arrives
+  // before it ends); only the keeper's own parry or distribution is off limits.
+  const lockedOut = now < state.looseBallUntil;
+  if (lockedOut && state.lastTouches[c.team]?.id === c.id) return;
   const ball = state.ballBody;
   const speed = ball.velocity.length();
 
   // Slow loose balls near the keeper (back-passes, rebounds) are gathered.
-  if (speed <= KEEPER_COLLECT_MAX_SPEED && ballDistance(c) <= KEEPER_COLLECT_RANGE && ball.position.y < .75) {
+  if (!lockedOut && speed <= KEEPER_COLLECT_MAX_SPEED && ballDistance(c) <= KEEPER_COLLECT_RANGE && ball.position.y < .75) {
     keeperHolds(c, now);
     return;
   }
   const approach = closestApproach(c);
   const diving = c.keeperDive && now >= c.keeperDive.startsAt;
   const reach = (diving ? KEEPER_DIVE_REACH : KEEPER_BODY_REACH) + BALL_R;
+  const atBody = approach.horizontal <= KEEPER_BODY_REACH + BALL_R;
   if (approach.horizontal > reach || approach.y - BALL_R > KEEPER_REACH_HEIGHT) return;
+  // Nothing behind the keeper (goal side) is reachable once it has gone past.
+  if ((approach.z - c.pos.z) * goalSignFor(c) > KEEPER_BODY_DEPTH) return;
+  // A ball still closing in is judged at its true closest approach (a later
+  // tick) unless it has already reached the body.
+  if (approach.approaching && !atBody) return;
 
   // Balls into the body/hands at a catchable pace are held; balls only reached
   // at full stretch, or struck too hard, are parried away from goal.
-  const atBody = approach.horizontal <= KEEPER_BODY_REACH + BALL_R;
   if (speed <= KEEPER_CATCH_MAX_SPEED * (atBody ? 1 : .5)) {
     keeperHolds(c, now);
     return;

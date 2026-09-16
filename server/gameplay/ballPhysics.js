@@ -1,9 +1,10 @@
 import { recordBallTouch } from './ballTouches.js';
 import { HALF_W, HALF_L, GOAL_HALF_W, GOAL_HEIGHT, GOAL_POST_R, BALL_R, PLAYER_R } from '../../shared/field.js';
 import * as CANNON from 'cannon-es';
-import { MAGNUS_COEFFICIENT, MAGNUS_MIN_SPEED, GOAL_FRAME_RESTITUTION, GOAL_FRAME_FRICTION, PLAYER_COLLISION_HEIGHT } from '../core/config.js';
+import { MAGNUS_COEFFICIENT, MAGNUS_MIN_SPEED, GOAL_FRAME_RESTITUTION, GOAL_FRAME_FRICTION, PLAYER_COLLISION_HEIGHT,
+  GRAVITY, BALL_MASS, BALL_LINEAR_DAMPING, BALL_ANGULAR_DAMPING } from '../core/config.js';
 export function buildWorld() {
-  const w = new CANNON.World({ gravity: new CANNON.Vec3(0, -9.82, 0) });
+  const w = new CANNON.World({ gravity: new CANNON.Vec3(0, -GRAVITY, 0) });
   w.broadphase = new CANNON.SAPBroadphase(w);
   w.allowSleep = false;
 
@@ -16,17 +17,8 @@ export function buildWorld() {
   ground.quaternion.setFromEuler(-Math.PI / 2, 0, 0);
   w.addBody(ground);
 
-  const wallThickness = 1;
-  function addWall(hx, hy, hz, x, y, z) {
-    const body = new CANNON.Body({ mass: 0, material: groundMat });
-    body.addShape(new CANNON.Box(new CANNON.Vec3(hx, hy, hz)));
-    body.position.set(x, y, z);
-    w.addBody(body);
-  }
-  // Touchline walls only. Goal lines are open: a ball that goes over them
-  // outside the goal mouth is out of play (see goalLine.js).
-  addWall(wallThickness / 2, 1.5, HALF_L + 1, -HALF_W - wallThickness / 2, 1.5, 0);
-  addWall(wallThickness / 2, 1.5, HALF_L + 1, HALF_W + wallThickness / 2, 1.5, 0);
+  // No boundary walls: a ball that fully crosses a touchline or a goal line
+  // (outside the goal mouth) is out of play (see goalLine.js).
 
   // Goal frames as real round posts and crossbars (cannon-es cylinders run
   // along Y). Inner post faces sit at ±GOAL_HALF_W and the crossbar underside at
@@ -50,12 +42,11 @@ export function buildWorld() {
   }
 
   const ball = new CANNON.Body({
-    mass: 0.45,
+    mass: BALL_MASS,
     material: ballMat,
     shape: new CANNON.Sphere(BALL_R),
-    linearDamping: 0.35,
-    // Sidespin from a curled shot decays over roughly a second of flight.
-    angularDamping: 0.3,
+    linearDamping: BALL_LINEAR_DAMPING,
+    angularDamping: BALL_ANGULAR_DAMPING,
   });
   ball.position.set(0, BALL_R, 0);
   w.addBody(ball);

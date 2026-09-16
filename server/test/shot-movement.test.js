@@ -11,9 +11,9 @@ import { createServer } from '../core/server.js';
 import { BALL_R } from '../../shared/field.js';
 import { SHOT_MAX_CHARGE_MS } from '../../shared/shot.js';
 import { CLIENT, SERVER } from '../../src/network/protocol.js';
-import { createShotPowerBar } from '../../src/ui/shotPowerBar.js';
+import { createShotPowerBar, SHOT_BAR_COMPLETE_MS } from '../../src/ui/shotPowerBar.js';
 import {
-  PLAYER_SPEED, SPRINT_SPEED, SHOT_MIN_POWER, SHOT_MAX_POWER, SHOT_POWER_EXPONENT, SHOT_MIN_LIFT, MAX_SHOT_SPIN,
+  PLAYER_SPEED, SPRINT_SPEED, SHOT_MIN_SPEED, SHOT_MAX_SPEED, SHOT_SPEED_EXPONENT, SHOT_MIN_LIFT, MAX_SHOT_SPIN, SHOT_AIM_MAX_DEG,
 } from '../core/config.js';
 
 function fixture(t) {
@@ -43,7 +43,7 @@ function fixture(t) {
   };
 }
 const horizontalSpeed = (body) => Math.hypot(body.velocity.x, body.velocity.z);
-const expectedPower = (charge) => SHOT_MIN_POWER + (SHOT_MAX_POWER - SHOT_MIN_POWER) * Math.pow(charge, SHOT_POWER_EXPONENT);
+const expectedPower = (charge) => SHOT_MIN_SPEED + (SHOT_MAX_SPEED - SHOT_MIN_SPEED) * Math.pow(charge, SHOT_SPEED_EXPONENT);
 const heading = (c) => Math.atan2(c.facing.x, c.facing.z);
 
 test('S starts a shot charge only with possession; without the ball it stays a standing tackle', (t) => {
@@ -74,7 +74,7 @@ test('releasing S fires a shot with power timed by the server clock', (t) => {
   assert.equal(state.ballOwnerId, null);
   assert.equal(shooter.shotCharge, null);
   assert.ok(Math.abs(horizontalSpeed(state.ballBody) - expectedPower(.5)) < 1e-9);
-  assert.ok(horizontalSpeed(state.ballBody) > SHOT_MIN_POWER && horizontalSpeed(state.ballBody) < SHOT_MAX_POWER);
+  assert.ok(horizontalSpeed(state.ballBody) > SHOT_MIN_SPEED && horizontalSpeed(state.ballBody) < SHOT_MAX_SPEED);
 });
 
 test('a 2 s hold gives maximum power and holding longer cannot exceed it', (t) => {
@@ -89,7 +89,7 @@ test('a 2 s hold gives maximum power and holding longer cannot exceed it', (t) =
     assert.equal(messages.at(-1).charge, 1);
     speeds.push(horizontalSpeed(state.ballBody));
   }
-  for (const speed of speeds) assert.ok(Math.abs(speed - SHOT_MAX_POWER) < 1e-9);
+  for (const speed of speeds) assert.ok(Math.abs(speed - SHOT_MAX_SPEED) < 1e-9);
 });
 
 test('holding S for the full 2 s fires automatically at maximum power without a release', (t) => {
@@ -159,6 +159,7 @@ test('sprinting turns slower than jogging, and both need time to turn', (t) => {
     const speed = sprint ? SPRINT_SPEED : PLAYER_SPEED;
     shooter.facing = { x: 0, z: 1 };
     shooter.vel = { x: 0, z: speed };
+    shooter.turnRate = 0;
     shooter.input = { x: 1, z: 0, sprint };
     const start = heading(shooter);
     for (let i = 0; i < 6; i++) players.applyPlayerControl(shooter, 1 / 60);
@@ -169,6 +170,22 @@ test('sprinting turns slower than jogging, and both need time to turn', (t) => {
   assert.ok(sprint < jog * .7, `sprint turn ${sprint} should be clearly slower than jog turn ${jog}`);
 });
 
+test('turning builds up and eases off: no instant angular speed, no overshoot', (t) => {
+  const { players, shooter } = fixture(t);
+  shooter.facing = { x: 0, z: 1 };
+  shooter.vel = { x: 0, z: 0 };
+  shooter.turnRate = 0;
+  shooter.input = { x: 1, z: 0, sprint: false };
+  players.applyPlayerControl(shooter, 1 / 60);
+  const firstStep = Math.abs(heading(shooter));
+  assert.ok(firstStep < .01, `first tick turns only ${firstStep} rad`);
+  const angles = [];
+  for (let i = 0; i < 90; i++) { players.applyPlayerControl(shooter, 1 / 60); angles.push(heading(shooter)); }
+  assert.ok(angles.every((angle) => angle <= Math.PI / 2 + 1e-9), 'never swings past the input direction');
+  assert.ok(Math.abs(angles.at(-1) - Math.PI / 2) < 1e-9, 'settles exactly on the input direction');
+  assert.ok(angles.findIndex((angle) => angle > Math.PI / 4) > 12, 'a quarter turn takes a noticeable moment');
+});
+
 test('movement is frame-rate independent', (t) => {
   const { players, shooter } = fixture(t);
   function run(dt) {
@@ -176,7 +193,8 @@ test('movement is frame-rate independent', (t) => {
     shooter.facing = { x: 0, z: 1 };
     shooter.vel = { x: 0, z: 0 };
     shooter.input = { x: 1, z: 0, sprint: false };
-    for (let elapsed = 0; elapsed < 1.5 - 1e-9; elapsed += dt) players.applyPlayerControl(shooter, dt);
+    shooter.turnRate = 0;
+    for (let elapsed = 0; elapsed < 2.5 - 1e-9; elapsed += dt) players.applyPlayerControl(shooter, dt);
     return { ...shooter.pos, speed: Math.hypot(shooter.vel.x, shooter.vel.z) };
   }
   const fine = run(1 / 120), coarse = run(1 / 20);
@@ -184,7 +202,7 @@ test('movement is frame-rate independent', (t) => {
   assert.ok(Math.abs(fine.speed - coarse.speed) < 1e-6);
 });
 
-test('curve intent from left/right input is bounded and spin never exceeds MAX_SHOT_SPIN', (t) => {
+test('aim intent from left/right input is bounded and spin never exceeds MAX_SHOT_SPIN', (t) => {
   const { state, actions, messages, shooter, giveBall, advance } = fixture(t);
   assert.equal(Math.abs(actions.shotParameters(1, 25).spin), MAX_SHOT_SPIN);
   assert.equal(Math.abs(actions.shotParameters(.4, -25).spin), MAX_SHOT_SPIN);
@@ -196,20 +214,26 @@ test('curve intent from left/right input is bounded and spin never exceeds MAX_S
     advance(17);
     state.ballOwnerId = shooter.id; // keep possession for the test while the player drifts
     state.ballBody.position.set(shooter.pos.x + shooter.facing.x * .86, BALL_R, shooter.pos.z + shooter.facing.z * .86);
-    assert.ok(Math.abs(shooter.shotCharge.curve) <= 1);
+    assert.ok(Math.abs(shooter.shotCharge.aim) <= 1);
   }
   actions.releaseShot(shooter);
   const shot = messages.at(-1);
   assert.equal(shot.action, 'shot');
   assert.ok(Math.abs(shot.spin) <= MAX_SHOT_SPIN);
-  assert.ok(shot.spin < 0, 'a right curve spins clockwise seen from above');
+  assert.ok(shot.aim > .5, 'holding right aims right');
+  assert.ok(shot.spin < 0, 'aiming right adds a subtle clockwise (right) curl seen from above');
 });
 
-test('a curled shot bends through the authoritative simulation; a straight one does not', (t) => {
+test('shots follow the facing: straight stays straight at any power, aim picks a side of the goal', (t) => {
   const { state, actions, messages, shooter, giveBall, advance, wait } = fixture(t);
   const opponent = state.clients.get('red');
   opponent.pos = { x: 20, z: 20 };
-  function lateralVelocities(curve) {
+  for (const random of [0, .5, .99]) {
+    t.mock.method(Math, 'random', () => random);
+    const full = actions.shotParameters(1, 0);
+    assert.equal(full.yaw, 0, 'no random sideways deviation, even at full power');
+  }
+  function lateralVelocities(curve, holdMs = 1000) {
     shooter.pos = { x: 0, z: 5 };
     shooter.facing = { x: 0, z: -1 };
     shooter.vel = { x: 0, z: 0 };
@@ -217,21 +241,82 @@ test('a curled shot bends through the authoritative simulation; a straight one d
     shooter.cooldowns.S = 0;
     giveBall();
     actions.startShotCharge(shooter);
-    shooter.shotCharge.curve = curve;
-    wait(1000);
+    shooter.shotCharge.aim = curve;
+    wait(holdMs);
     actions.releaseShot(shooter);
     assert.equal(messages.at(-1).action, 'shot');
     const right = { x: -shooter.facing.z, z: shooter.facing.x };
     const lateral = () => state.ballBody.velocity.x * right.x + state.ballBody.velocity.z * right.z;
     const start = lateral();
-    for (let i = 0; i < 24; i++) advance(17);
-    return { start, end: lateral() };
+    const from = { x: state.ballBody.position.x, z: state.ballBody.position.z };
+    for (let i = 0; i < 24 && state.phase === 'playing'; i++) advance(17);
+    const sideways = (state.ballBody.position.x - from.x) * right.x + (state.ballBody.position.z - from.z) * right.z;
+    const forward = (state.ballBody.position.x - from.x) * shooter.facing.x + (state.ballBody.position.z - from.z) * shooter.facing.z;
+    return { start, end: lateral(), angle: Math.atan2(sideways, forward) * 180 / Math.PI };
   }
-  const straight = lateralVelocities(0);
-  assert.ok(Math.abs(straight.start) < 1e-9 && Math.abs(straight.end) < 1e-6, 'no spin, no bend');
-  const curled = lateralVelocities(1);
-  assert.ok(curled.start < 0, 'a right curve launches slightly to the left');
-  assert.ok(curled.end - curled.start > 1.5, `the ball bends right in flight (${curled.start} → ${curled.end})`);
+  const straight = lateralVelocities(0, 2000);
+  assert.ok(Math.abs(straight.start) < 1e-9 && Math.abs(straight.end) < 1e-6, 'a straight rocket goes straight');
+  const right = lateralVelocities(1);
+  assert.ok(right.start > 0, 'aiming right sends the ball right of the facing');
+  assert.ok(right.angle > SHOT_AIM_MAX_DEG - 2 && right.angle < SHOT_AIM_MAX_DEG + 2, `ends near the aim angle (${right.angle}°)`);
+  const left = lateralVelocities(-.5);
+  assert.ok(left.angle < 0 && left.angle > -SHOT_AIM_MAX_DEG, `a slight left aim is a slight left shot (${left.angle}°)`);
+});
+
+test('power bar is drawn from the server charge start and reaches exactly 100 % at 2.0 s', () => {
+  const classes = new Set();
+  const segments = Array.from({ length: 10 }, () => ({ style: { setProperty() {} } }));
+  const element = { hidden: true, style: {}, querySelectorAll: () => segments,
+    classList: { toggle: (name, on) => (on ? classes.add(name) : classes.delete(name)), remove: (name) => classes.delete(name) } };
+  const bar = createShotPowerBar(element);
+  const serverStartedAt = 1_700_000_000_000; // server clock, as sent in 'shot_charge'
+  bar.start(serverStartedAt);
+  assert.equal(bar.startedAt(), serverStartedAt, 'no local timer: the bar keeps the server start time');
+  assert.equal(bar.level(serverStartedAt + 500), .25);
+  assert.equal(bar.level(serverStartedAt + 1000), .5);
+  assert.ok(bar.level(serverStartedAt + 1999) < 1, 'not full a millisecond early');
+  assert.equal(bar.level(serverStartedAt + 2000), 1, 'full at exactly 2.0 s');
+  assert.equal(bar.level(serverStartedAt + 6000), 1, 'never beyond 100 %');
+  bar.update(serverStartedAt + 2000, { x: 0, y: 0, visible: true });
+  assert.ok(classes.has('max'), '100 % is shown (red) rather than hidden');
+});
+
+test('an automatic maximum shot shows the full bar briefly on the charge clock; stop hides it at once', () => {
+  const classes = new Set();
+  const segments = Array.from({ length: 10 }, () => ({ style: { setProperty() {} } }));
+  const element = { hidden: false, style: {}, querySelectorAll: () => segments,
+    classList: { toggle: (name, on) => (on ? classes.add(name) : classes.delete(name)), remove: (name) => classes.delete(name) } };
+  const bar = createShotPowerBar(element);
+  bar.start(0);
+  bar.update(1990, { x: 0, y: 0, visible: true }); // the server fired a moment before the client clock reached 2 s
+  bar.complete();
+  assert.ok(classes.has('max'), 'painted at 100 % (red)');
+  assert.equal(bar.level(1995), 1);
+  bar.update(SHOT_MAX_CHARGE_MS + SHOT_BAR_COMPLETE_MS - 1, { x: 0, y: 0, visible: true });
+  assert.equal(bar.isCharging(), true, 'still visible for the brief hold');
+  bar.update(SHOT_MAX_CHARGE_MS + SHOT_BAR_COMPLETE_MS, { x: 0, y: 0, visible: true });
+  assert.equal(bar.isCharging(), false);
+  assert.equal(element.hidden, true);
+
+  bar.start(5000);
+  bar.stop();
+  assert.equal(element.hidden, true, 'a release or cancel hides immediately');
+});
+
+test('server charge and power bar share one normalized charge: the shot result matches the bar level', (t) => {
+  const { messages, actions, shooter, giveBall, wait } = fixture(t);
+  const segments = Array.from({ length: 10 }, () => ({ style: { setProperty() {} } }));
+  const bar = createShotPowerBar({ hidden: true, style: {}, querySelectorAll: () => segments, classList: { toggle() {}, remove() {} } });
+  giveBall();
+  actions.startShotCharge(shooter);
+  const ack = messages.at(-1);
+  assert.equal(ack.action, 'shot_charge');
+  assert.equal(typeof ack.startedAt, 'number', 'the acknowledgement carries the server start time');
+  bar.start(ack.startedAt);
+  wait(1300);
+  const barLevel = bar.level(Date.now());
+  actions.releaseShot(shooter);
+  assert.equal(messages.at(-1).charge, barLevel);
 });
 
 test('segmented power bar fills left to right, caps at 100% and hides on stop', () => {

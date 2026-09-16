@@ -1,5 +1,5 @@
 import { PLAYER_SPEED, SPRINT_SPEED, SLIDE_SPEED, SLIDE_RECOVERY, PITCH_MIN_X, PITCH_MAX_X, PITCH_MIN_Z, PITCH_MAX_Z, POSITIONS, positionFor,
-  PLAYER_ACCELERATION, PLAYER_SPRINT_ACCELERATION, PLAYER_DECELERATION, PLAYER_STAND_TURN_RATE, PLAYER_MAX_TURN_RATE, PLAYER_SPRINT_TURN_RATE,
+  PLAYER_ACCELERATION, PLAYER_SPRINT_ACCELERATION, PLAYER_DECELERATION, PLAYER_STAND_TURN_RATE, PLAYER_MAX_TURN_RATE, PLAYER_SPRINT_TURN_RATE, PLAYER_TURN_ACCELERATION,
   SHOT_CHARGE_TURN_FACTOR, SHOT_CHARGE_SPEED_FACTOR,
   KEEPER_POSITION_SPEED, KEEPER_LATERAL_FACTOR, KEEPER_MAX_SIDE, KEEPER_MIN_DEPTH, KEEPER_MAX_DEPTH, KEEPER_DIVE_SPEED } from '../core/config.js';
 import { HALF_L, GOAL_HALF_W, FIELD } from '../../shared/field.js';
@@ -37,6 +37,7 @@ function placeAllPlayers() {
     c.facing = { x: 0, z: c.team === 'blue' ? -1 : 1 };
     c.cooldowns = { A: 0, S: 0, D: 0 };
     c.standingActive = 0;
+    c.turnRate = 0;
     c.shotCharge = null;
     c.lastAction = null;
   }
@@ -63,8 +64,10 @@ function approach(value, target, maxStep) {
   return value < target ? Math.min(target, value + maxStep) : Math.max(target, value - maxStep);
 }
 
-// Momentum-based steering. The body turns toward the input at a speed-dependent
-// rate, and speed only builds along the direction the body already faces:
+// Momentum-based steering. The body has an angular speed (c.turnRate) that
+// builds up and eases off with a speed-dependent angular acceleration, capped by
+// a speed-dependent turn rate, and slows early enough to stop on the input
+// direction. Speed only builds along the direction the body already faces:
 // input behind the player brakes first, then the body turns, then it
 // accelerates the new way. Velocity always follows the body's facing.
 function steerFootballer(c, dt) {
@@ -73,23 +76,35 @@ function steerFootballer(c, dt) {
   const charging = !!c.shotCharge;
   let speed = Math.hypot(c.vel.x, c.vel.z);
   let desiredSpeed = 0;
+  const agility = turnRateForSpeed(speed);
+  const maxRate = agility * (charging ? SHOT_CHARGE_TURN_FACTOR : 1);
+  const turnAcceleration = PLAYER_TURN_ACCELERATION * (agility / PLAYER_STAND_TURN_RATE);
+  const heading = Math.atan2(c.facing.x, c.facing.z);
+  let diff = 0, targetRate = 0;
+  if (inputLength > 0.01) {
+    const target = Math.atan2(inp.x / inputLength, inp.z / inputLength);
+    diff = Math.atan2(Math.sin(target - heading), Math.cos(target - heading));
+    targetRate = Math.sign(diff) * Math.min(maxRate, Math.sqrt(2 * turnAcceleration * Math.abs(diff)));
+  }
+  c.turnRate = approach(c.turnRate || 0, targetRate, turnAcceleration * dt);
+  const step = c.turnRate * dt;
 
   if (inputLength > 0.01) {
-    const nx = inp.x / inputLength, nz = inp.z / inputLength;
-    const heading = Math.atan2(c.facing.x, c.facing.z);
-    const diff = Math.atan2(Math.sin(Math.atan2(nx, nz) - heading), Math.cos(Math.atan2(nx, nz) - heading));
-    const maxTurn = turnRateForSpeed(speed) * (charging ? SHOT_CHARGE_TURN_FACTOR : 1) * dt;
     let remaining = 0;
-    if (Math.abs(diff) <= maxTurn) {
-      c.facing = { x: nx, z: nz }; // aligned: use the exact input direction
+    if (Math.abs(diff) < 1e-4 || (Math.abs(diff) <= Math.abs(step) && Math.sign(step) === Math.sign(diff))) {
+      c.facing = { x: inp.x / inputLength, z: inp.z / inputLength }; // arrived: use the exact input direction
+      c.turnRate = 0;
     } else {
-      const next = heading + Math.sign(diff) * maxTurn;
+      const next = heading + step;
       c.facing = { x: Math.sin(next), z: Math.cos(next) };
-      remaining = Math.abs(diff) - maxTurn;
+      remaining = Math.abs(Math.atan2(Math.sin(heading + diff - next), Math.cos(heading + diff - next)));
     }
     const cap = c.recoveryRemaining > 0 ? PLAYER_SPEED * .35 : (inp.sprint ? SPRINT_SPEED : PLAYER_SPEED);
     // Full speed only once the body points where the player wants to go.
     desiredSpeed = cap * Math.max(0, Math.cos(remaining)) * (charging ? SHOT_CHARGE_SPEED_FACTOR : 1);
+  } else if (step) {
+    const next = heading + step; // a turn in progress eases out
+    c.facing = { x: Math.sin(next), z: Math.cos(next) };
   }
 
   if (desiredSpeed > speed) {

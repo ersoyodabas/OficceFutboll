@@ -4,9 +4,11 @@ import { createClubBadge } from './clubBadge.js';
 import { createCountdown } from './countdown.js';
 import { keyLabel } from './settings.js';
 import { createGoalPresentation } from './goalPresentation.js';
+import { createOutNotice } from './outNotice.js';
 import { isMatchPhase } from '../../shared/matchPhases.js';
 export function createUI({ state, canvas, onClearInput, onLeaveMatch, preferences }) {
 const goalPresentation = createGoalPresentation();
+const outNotice = createOutNotice();
 const $ = (id) => document.getElementById(id);
 
 const hud = $('hud');
@@ -57,7 +59,7 @@ const countdownSub = $('countdownSub');
 const { showCountdownOverlay, hideCountdownOverlay } = createCountdown({ countdownOverlay, countdownNumber, countdownSub });
 function showOverlay(el) {
   if (el !== lobbyOverlay) for (const id of ['profileDialog', 'clubDialog']) { const dialog = $(id); if (dialog.open) dialog.close(); }
-  if (el) goalPresentation.hide();
+  if (el) { goalPresentation.hide(); outNotice.hide(); }
   setMatchMenu(false);
   settingsOverlay.hidden = true;
   [connectOverlay, lobbyOverlay, endOverlay, disconnectOverlay].forEach((o) => { o.hidden = (o !== el); });
@@ -157,5 +159,5 @@ function showMatchEnd(msg) {
     showOverlay(endOverlay);
     hud.hidden = true; hint.hidden = true;
 }
-return { goalPresentation, showMatchEnd, dom: { $, hud, hint, scoreBlueEl, scoreRedEl, myFlagBlue, myFlagRed, matchClockEl, posLabelEl, connectOverlay, lobbyOverlay, endOverlay, disconnectOverlay, matchMenu, resumeBtn, leaveMatchBtn, serverInput, nameInput, connectBtn, connStatus, lobbyStatus, slotStatus, readyBtn, readyProgress, endResultEl, endScoreEl, disconnectMsg, reconnectBtn, lobbyLogo, countdownOverlay, countdownNumber, countdownSub, chatPanel, chatToggleBtn, chatMessages, chatForm, chatInput }, showOverlay, updateConnectionStatus, setMatchMenu, showCountdownOverlay, hideCountdownOverlay, applyStateHUD, updateClock };
+return { goalPresentation, outNotice, showMatchEnd, dom: { $, hud, hint, scoreBlueEl, scoreRedEl, myFlagBlue, myFlagRed, matchClockEl, posLabelEl, connectOverlay, lobbyOverlay, endOverlay, disconnectOverlay, matchMenu, resumeBtn, leaveMatchBtn, serverInput, nameInput, connectBtn, connStatus, lobbyStatus, slotStatus, readyBtn, readyProgress, endResultEl, endScoreEl, disconnectMsg, reconnectBtn, lobbyLogo, countdownOverlay, countdownNumber, countdownSub, chatPanel, chatToggleBtn, chatMessages, chatForm, chatInput }, showOverlay, updateConnectionStatus, setMatchMenu, showCountdownOverlay, hideCountdownOverlay, applyStateHUD, updateClock };
 }

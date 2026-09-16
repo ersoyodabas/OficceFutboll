@@ -8,7 +8,7 @@ import { createMatchManager } from '../gameplay/matchManager.js';
 import { createSimulation } from '../gameplay/simulation.js';
 import { recordBallTouch } from '../gameplay/ballTouches.js';
 import { BALL_R, HALF_W, HALF_L, GOAL_HALF_W, FIELD } from '../../shared/field.js';
-import { PLAYER_SPEED, MATCH_DURATION_SECONDS, MATCH_END_PAUSE_SECONDS, GOAL_PAUSE_SECONDS, KICKOFF_PAUSE_SECONDS, SHOT_MIN_POWER, SHOT_MIN_LIFT } from '../core/config.js';
+import { PLAYER_SPEED, MATCH_DURATION_SECONDS, MATCH_END_PAUSE_SECONDS, GOAL_PAUSE_SECONDS, KICKOFF_PAUSE_SECONDS, SHOT_MIN_SPEED, SHOT_MIN_LIFT, OUT_OF_PLAY_SECONDS } from '../core/config.js';
 
 function fixture(t) {
   let now = 100000;
@@ -35,7 +35,7 @@ test('movement remains normalized and action power/cooldowns are server-owned', 
   // Diagonal input reaches, but never exceeds, the jog cap along the input direction.
   assert.ok(Math.abs(Math.hypot(player.vel.x, player.vel.z) - PLAYER_SPEED) < 1e-8);
   assert.ok(Math.abs(player.facing.x - Math.SQRT1_2) < 1e-9 && Math.abs(player.facing.z - Math.SQRT1_2) < 1e-9);
-  for (const [key, action, horizontal, vertical] of [['A', 'pass', 16, .35], ['S', 'shot', SHOT_MIN_POWER, SHOT_MIN_LIFT], ['D', 'cross', 16, 7.2]]) {
+  for (const [key, action, horizontal, vertical] of [['A', 'pass', 16, .35], ['S', 'shot', SHOT_MIN_SPEED, SHOT_MIN_LIFT], ['D', 'cross', 16, 7.2]]) {
     state.ballBody.position.set(player.pos.x, BALL_R, player.pos.z);
     state.ballBody.velocity.set(0, 0, 0);
     state.ballOwnerId = player.id;
@@ -69,12 +69,9 @@ test('slide direction and ball capture survive module boundaries', (t) => {
   assert.ok(messages.some((m) => m.action === 'slide_tackle' && m.success));
 });
 
-test('slide capture cannot push the ball through corner or end-line walls', (t) => {
-  const { state, actions, advance } = fixture(t);
+test('slide capture over the end line near the corner is out over the goal line, never a goal', (t) => {
+  const { state, actions, advance, messages } = fixture(t);
   const player = state.clients.get('blue');
-  const maxX = HALF_W - BALL_R;
-  const maxZ = HALF_L - BALL_R;
-
   player.pos = { x: HALF_W - .48, z: HALF_L - .48 };
   player.facing = { x: 0, z: 1 };
   player.input = { x: 0, z: 1, sprint: false };
@@ -83,26 +80,31 @@ test('slide capture cannot push the ball through corner or end-line walls', (t) 
   state.ballBody.velocity.set(0, 0, 8);
 
   actions.performAction(player, 'D');
-  assert.ok(state.ballBody.position.z > maxZ, 'slide reproduces the post-physics end-line teleport');
+  assert.ok(state.ballBody.position.z > HALF_L + BALL_R, 'slide capture pushes the whole ball over the end line');
   advance();
 
-  assert.ok(state.ballBody.position.x <= maxX);
-  assert.ok(state.ballBody.position.z <= maxZ);
-  assert.ok(state.ballBody.velocity.z <= 0, 'outward velocity is reflected back into play');
-  assert.deepEqual(state.score, { blue: 0, red: 0 }, 'corner containment is not counted as a goal');
+  assert.equal(state.phase, 'outOfPlay', 'over the goal line is out of play');
+  assert.equal(state.outEvent.boundary, 'goalLine', 'the goal line was crossed, not the touchline');
+  assert.equal(state.outEvent.defendingTeam, 'blue');
+  assert.equal(state.outEvent.notice, 'KORNER', 'blue put it over its own goal line');
+  assert.ok(messages.some((m) => m.type === 'outOfPlay'));
+  assert.deepEqual(state.score, { blue: 0, red: 0 }, 'a corner ball is not a goal');
+});
 
-  state.ballOwnerId = null;
-  player.slideRemaining = 0;
-  player.recoveryRemaining = 0;
-  player.cooldowns.D = 0;
+test('a ball beside the post, outside the goal mouth, is out rather than a goal', (t) => {
+  const { state, actions, advance } = fixture(t);
+  const player = state.clients.get('blue');
   player.pos = { x: GOAL_HALF_W + .25, z: HALF_L - .48 };
+  player.facing = { x: 0, z: 1 };
+  player.input = { x: 0, z: 1, sprint: false };
+  player.vel = { x: 0, z: 12.5 };
   state.ballBody.position.set(player.pos.x, BALL_R, player.pos.z + .7);
   state.ballBody.velocity.set(0, 0, 8);
 
   actions.performAction(player, 'D');
   advance();
 
-  assert.ok(state.ballBody.position.z <= maxZ, 'the wall beside the goal contains slide capture');
+  assert.equal(state.phase, 'outOfPlay');
   assert.deepEqual(state.score, { blue: 0, red: 0 }, 'the outside of the goal post is not a goal');
 });
 
@@ -134,42 +136,46 @@ test('AI keeper secures saves inward and distributes to a teammate', (t) => {
   assert.deepEqual(state.score, { blue: 0, red: 0 });
 });
 
-test('AI keeper catches shots and back-passes without sliding at the ball', (t) => {
-  const { state, actions } = fixture(t);
+test('AI keeper saves a shot it reaches and gathers back-passes without sliding at the ball', (t) => {
+  const { state, actions, advance } = fixture(t);
   const keeper = state.clients.get('ai_keeper_blue');
   const opponent = state.clients.get('red');
-  keeper.pos = { x: 0, z: HALF_L - .5 };
-  keeper.vel = { x: 0, z: -4 };
-  opponent.pos = { x: 0, z: HALF_L - 2 };
-  state.ballBody.position.set(opponent.pos.x, BALL_R, opponent.pos.z);
+  keeper.pos = { x: 0, z: HALF_L - .8 };
+  opponent.pos = { x: 0, z: HALF_L - 2.4 };
+  state.ballBody.position.set(opponent.pos.x, BALL_R, opponent.pos.z - .86);
   state.ballBody.velocity.set(0, 0, 0);
   state.ballOwnerId = opponent.id;
 
   actions.updateBallControl(.016);
   assert.equal(keeper.slideRemaining, 0, 'keeper holds position against a dribbler');
+  assert.equal(state.ballOwnerId, opponent.id, 'keeper does not snatch a dribbled ball from a distance');
 
+  // A catchable shot into the keeper's body.
+  opponent.pos = { x: 15, z: 0 };
+  state.clients.get('blue').pos = { x: -15, z: 0 };
   state.ballOwnerId = null;
-  state.looseBallUntil = Date.now() + 1000;
-  state.ballBody.position.set(0, BALL_R, HALF_L - 1.6);
-  state.ballBody.velocity.set(0, 0, 9);
-  actions.updateBallControl(.016);
+  state.looseBallUntil = 0;
+  state.ballBody.position.set(0, .9, HALF_L - 9);
+  state.ballBody.velocity.set(0, 1.5, 14);
+  for (let i = 0; i < 90 && state.ballOwnerId !== keeper.id; i++) advance();
 
-  assert.equal(state.ballOwnerId, keeper.id, 'keeper catches a shot travelling toward goal');
+  assert.equal(state.ballOwnerId, keeper.id, 'keeper holds a shot struck at the body');
   assert.equal(keeper.slideRemaining, 0, 'shot save does not use a slide tackle');
   assert.equal(keeper.lastAction.type, 'save');
+  assert.deepEqual(state.score, { blue: 0, red: 0 });
 
   state.ballOwnerId = null;
   state.looseBallUntil = 0;
   keeper.keeperPossessionStartedAt = 0;
-  state.ballBody.position.set(keeper.pos.x, BALL_R, keeper.pos.z - .7);
+  state.ballBody.position.set(keeper.pos.x, BALL_R, keeper.pos.z - .9);
   state.ballBody.velocity.set(0, 0, 2);
-  actions.updateBallControl(.016);
+  advance();
 
-  assert.equal(state.ballOwnerId, keeper.id, 'keeper controls a nearby back-pass');
+  assert.equal(state.ballOwnerId, keeper.id, 'keeper gathers a nearby back-pass');
   assert.equal(keeper.slideRemaining, 0, 'back-pass control does not use a slide tackle');
 });
 
-test('physics, crossbar filtering, goals, winning score and lobby reset remain authoritative', (t) => {
+test('physics, crossbar filtering, out of play, goals, winning score and lobby reset remain authoritative', (t) => {
   const { state, advance, messages } = fixture(t);
   state.ballBody.position.set(0, 4, 0);
   for (let i = 0; i < 10; i++) advance();
@@ -182,6 +188,14 @@ test('physics, crossbar filtering, goals, winning score and lobby reset remain a
   state.ballBody.velocity.set(0, 0, 0);
   advance();
   assert.deepEqual(state.score, { blue: 0, red: 0 }, 'above-crossbar ball is not a goal');
+  assert.equal(state.phase, 'outOfPlay', 'it is out of play instead');
+  advance(OUT_OF_PLAY_SECONDS * 1000);
+  assert.equal(state.phase, 'playing', 'play resumes with a goal kick');
+  assert.equal(state.ballOwnerId, 'ai_keeper_red', 'the defending keeper takes the goal kick');
+
+  moveKeepersAway();
+  state.ballOwnerId = null;
+  state.looseBallUntil = 0;
   state.ballBody.position.set(0, BALL_R, -HALF_L - .5);
   state.ballBody.velocity.set(0, 0, 0);
   advance();

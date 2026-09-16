@@ -1,0 +1,40 @@
+/* "AUT!!!" out-of-play notice: a short cinematic band across the centre. */
+.out-notice {
+  position: fixed; inset: 0; z-index: 65; pointer-events: none;
+  display: grid; place-items: center; overflow: hidden;
+  font-family: "Segoe UI", Arial, sans-serif;
+}
+.out-notice[hidden] { display: none; }
+.out-notice-band {
+  position: relative; display: grid; justify-items: center; gap: 2px;
+  width: min(760px, 92vw); padding: 14px 24px 16px;
+  background: linear-gradient(90deg, transparent, rgba(8, 12, 18, .82) 18%, rgba(8, 12, 18, .82) 82%, transparent);
+}
+.out-notice-band::before, .out-notice-band::after {
+  content: ''; position: absolute; left: 8%; right: 8%; height: 3px;
+  background: linear-gradient(90deg, transparent, #ff6a2b, #ffd23f, #ff6a2b, transparent);
+}
+.out-notice-band::before { top: 0; }
+.out-notice-band::after { bottom: 0; }
+.out-notice-text {
+  font-size: clamp(64px, 11vw, 132px); line-height: 1.12; font-weight: 950; font-style: italic;
+  letter-spacing: -.02em; padding-right: .06em; color: #fff;
+  text-shadow: 0 5px 0 #0009, 0 0 34px rgba(255, 106, 43, .75);
+}
+/* Room below the title for descenders such as the cedilla in TAÇ. */
+.out-notice-sub { margin-top: .5em; font-size: clamp(11px, 1.6vw, 15px); font-weight: 800; letter-spacing: .38em; color: #ffd8a8; }
+
+.out-notice.is-active { animation: out-shell var(--out-duration) var(--out-delay) both; }
+.out-notice.is-active .out-notice-band { animation: out-band var(--out-duration) var(--out-delay) cubic-bezier(.16, 1, .3, 1) both; }
+.out-notice.is-active .out-notice-text { animation: out-text var(--out-duration) var(--out-delay) cubic-bezier(.16, 1, .3, 1) both; }
+@keyframes out-shell { 0% { opacity: 0; } 8%, 82% { opacity: 1; } 100% { opacity: 0; } }
+@keyframes out-band { 0% { transform: scaleX(.2); } 14%, 82% { transform: scaleX(1); } 100% { transform: scaleX(1.08); } }
+@keyframes out-text {
+  0%, 4% { opacity: 0; transform: scale(1.8) skewX(-12deg); filter: blur(6px); }
+  18% { opacity: 1; transform: scale(.94) skewX(-4deg); filter: none; }
+  26%, 82% { opacity: 1; transform: none; }
+  100% { opacity: 0; transform: translateY(-14px) scale(.96); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .out-notice.is-active, .out-notice.is-active * { animation: none; }
+}

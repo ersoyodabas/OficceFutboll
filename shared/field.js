@@ -29,4 +29,4 @@ export const FIELD = Object.freeze({
       Object.freeze({ position: 'FRV', x: 0, z: 6 }),
     ]),
   });
-export const { HALF_W, HALF_L, GOAL_HALF_W, GOAL_HEIGHT, BALL_R, PLAYER_R } = FIELD;
+export const { HALF_W, HALF_L, GOAL_HALF_W, GOAL_HEIGHT, GOAL_POST_R, BALL_R, PLAYER_R } = FIELD;

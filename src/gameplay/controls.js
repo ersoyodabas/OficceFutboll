@@ -1,23 +1,47 @@
 import { isMatchPhase } from '../../shared/matchPhases.js';
 import { CLIENT, SERVER } from '../network/protocol.js';
+import { SHOT_MAX_CHARGE_MS } from '../../shared/shot.js';
 
 export function createControls({ state, ui, network, preferences, settings, players, shotBar, events }) {
   const pressed = Object.create(null);
   const isBound = (name, code) => preferences.get().keys[name] === code;
   const anyGameKey = (code) => Object.values(preferences.get().keys).includes(code);
 
-  // S with the ball charges a shot (the server times the hold); S without it
-  // stays a standing tackle. The bar is only the responsive local display.
+  // S always asks the server to start a charge; the server decides whether it is
+  // a charged shot (with the ball) or a standing tackle (without it). The server
+  // starts timing the moment it receives this press, so the bar is anchored to
+  // the press itself on this browser's monotonic clock (performance.now) and
+  // shows shotChargeLevel(elapsed), the same 0..1 function the server uses. It
+  // never reads an estimated server clock, so latency changes, clock skew or
+  // clock smoothing cannot stretch the 2 s fill.
+  let shootHeld = false;
+  let shotPressedAt = null;          // performance.now() of the press that started the charge
+  let serverChargeStartedAt = null;  // server time from 'shot_charge', compared only with server times
   function cancelShotCharge() {
-    if (!shotBar.isCharging()) return;
+    const wasActive = shootHeld || shotBar.isCharging();
+    shootHeld = false;
+    shotPressedAt = serverChargeStartedAt = null;
     shotBar.stop();
-    if (network.isOpen()) network.send({ type: CLIENT.SHOT_CANCEL });
+    if (wasActive && network.isOpen()) network.send({ type: CLIENT.SHOT_CANCEL });
   }
   events.on(SERVER.ACTION_RESULT, (msg) => {
-    if (msg.id !== state.myId || !shotBar.isCharging()) return;
-    // The server fired (including the automatic 2 s shot), cancelled (ball lost)
-    // or treated S as a tackle instead.
-    if (['shot', 'shot_cancel', 'standing_tackle'].includes(msg.action)) shotBar.stop();
+    if (msg.id !== state.myId) return;
+    if (msg.action === 'shot_charge' && shootHeld && shotPressedAt !== null) {
+      serverChargeStartedAt = typeof msg.startedAt === 'number' ? msg.startedAt : null;
+      shotBar.start(shotPressedAt);
+    }
+    // The automatic maximum shot briefly shows the full bar; a release, a cancel
+    // (ball lost) or a tackle instead hides it at once.
+    if (msg.action === 'shot' && msg.charge >= 1 && shotBar.isCharging()) shotBar.complete();
+    else if (['shot', 'shot_cancel', 'standing_tackle'].includes(msg.action)) shotBar.stop();
+  });
+  events.on(SERVER.STATE, (msg) => {
+    const me = msg.players?.find((p) => p.id === state.myId);
+    if (!me || !shotBar.isCharging() || me.charging || serverChargeStartedAt === null) return;
+    // Drop a bar the server stopped backing before full charge (at full charge
+    // the 'shot' result drives the bar). Both times here are server times.
+    const held = msg.serverTime - serverChargeStartedAt;
+    if (held > 150 && held < SHOT_MAX_CHARGE_MS) shotBar.stop();
   });
 
   function clearGameInput() {
@@ -42,16 +66,17 @@ export function createControls({ state, ui, network, preferences, settings, play
     }
     if (state.phase !== 'playing' || state.waitingInLobby || !ui.dom.matchMenu.hidden || !state.joined || isTypingTarget(event.target) || !anyGameKey(event.code)) return;
     event.preventDefault();
-    if (!pressed[event.code] && network.isOpen()) {
+    // OS auto-repeat never starts anything: after an input reset (restart, menu)
+    // a key still held from before would otherwise begin a charge late.
+    if (!pressed[event.code] && !event.repeat && network.isOpen()) {
       if (isBound('shoot', event.code)) {
-        if (players.hasBall(state.myId)) {
-          network.send({ type: CLIENT.SHOT_CHARGE_START });
-          shotBar.start(performance.now());
-        } else {
-          network.send({ type: CLIENT.ACTION, key: 'S' });
-        }
-      } else if (!shotBar.isCharging()) {
-        // Pass/cross are ignored while a shot is being charged.
+        shootHeld = true;
+        shotPressedAt = performance.now();
+        serverChargeStartedAt = null;
+        shotBar.stop();
+        network.send({ type: CLIENT.SHOT_CHARGE_START });
+      } else if (!shootHeld) {
+        // Pass/cross are ignored while S is held.
         const action = isBound('pass', event.code) ? 'A' : isBound('cross', event.code) ? 'D' : null;
         if (action) network.send({ type: CLIENT.ACTION, key: action });
       }
@@ -61,8 +86,11 @@ export function createControls({ state, ui, network, preferences, settings, play
   window.addEventListener('keyup', (event) => {
     if (!anyGameKey(event.code)) return;
     pressed[event.code] = false;
-    if (isBound('shoot', event.code) && shotBar.isCharging()) {
+    if (isBound('shoot', event.code) && shootHeld) {
+      shootHeld = false;
+      shotPressedAt = serverChargeStartedAt = null;
       shotBar.stop();
+      // The server shoots with the charge it measured; ignored if it already fired.
       if (network.isOpen()) network.send({ type: CLIENT.SHOT_RELEASE });
     }
   });

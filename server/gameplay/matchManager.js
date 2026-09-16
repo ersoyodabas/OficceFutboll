@@ -3,9 +3,13 @@ import { validateClubSelections } from '../../shared/kitClash.js';
 import { matchSnapshot } from './snapshot.js';
 import { SERVER } from '../../src/network/protocol.js';
 import { GOAL_PAUSE_SECONDS, KICKOFF_PAUSE_SECONDS, WIN_SCORE, MATCH_END_PAUSE_SECONDS, MATCH_DURATION_SECONDS,
-  OUT_OF_PLAY_SECONDS, GOAL_KICK_DISTANCE, GOAL_KICK_MAX_SIDE, GOAL_KICK_KEEPER_OFFSET } from '../core/config.js';
+  OUT_OF_PLAY_SECONDS, GOAL_KICK_DISTANCE, GOAL_KICK_MAX_SIDE, GOAL_KICK_KEEPER_OFFSET, RESTART_EDGE_MARGIN, RESTART_OPPONENT_DISTANCE,
+  PITCH_MIN_X, PITCH_MAX_X, PITCH_MIN_Z, PITCH_MAX_Z } from '../core/config.js';
 import { HALF_L, BALL_R, FIELD } from '../../shared/field.js';
 import { GOAL_TAUNTS } from '../../shared/goalTaunts.js';
+
+// Ball distance in front of a restart taker (the normal dribbling offset).
+const RESTART_BALL_OFFSET = 0.86;
 export function createMatchManager({ state, broadcast, broadcastLobby, buildWorld, placeAllPlayers }) {
 function clearGoalSequence() {
   state.goalEvent = null;
@@ -170,17 +174,63 @@ function advanceGoalSequence(now) {
   }
 }
 
-// ---------- Out of play (AUT) → goal kick ----------
-// crossing: { end, x, y } from goalLine.js. Play stops where it is and every
-// client shows the AUT notice for OUT_OF_PLAY_SECONDS.
+// ---------- Out of play → authoritative restart ----------
+// Every exit is judged here once (play is frozen in 'outOfPlay', so no second
+// exit can be declared until the restart). The team that did NOT touch the
+// ball last restarts:
+//   touchline                  → TAÇ: throw-in by the nearest opposing outfield player
+//   goal line, attackers last  → AUT: goal kick by the defending goalkeeper
+//   goal line, defenders last  → KORNER: corner by the nearest attacking outfield player
+// If the receiving team has no outfield player, its goalkeeper restarts instead.
+const OTHER_TEAM = { blue: 'red', red: 'blue' };
+const goalSignOf = (team) => (team === 'blue' ? 1 : -1); // blue defends +Z
+
+function lastTouchTeam() {
+  const { blue, red } = state.lastTouches;
+  if (blue && red) return blue.at >= red.at ? 'blue' : 'red';
+  return blue ? 'blue' : red ? 'red' : null;
+}
+function goalkeeperOf(team) {
+  const inTeam = [...state.clients.values()].filter((c) => c.inMatch && c.team === team);
+  return inTeam.find((c) => c.isAI && c.position === 'KL') || inTeam.find((c) => c.position === 'KL') || null;
+}
+function nearestOutfieldPlayer(team, position) {
+  let best = null, bestDistance = Infinity;
+  for (const c of state.clients.values()) {
+    if (!c.inMatch || c.team !== team || c.position === 'KL') continue;
+    const distance = Math.hypot(c.pos.x - position.x, c.pos.z - position.z);
+    if (distance < bestDistance || (distance === bestDistance && c.id < best.id)) { best = c; bestDistance = distance; }
+  }
+  return best;
+}
+// Who takes the restart; throw-ins and corners fall back to the goalkeeper.
+function chooseRestart(restart, team, position) {
+  if (restart === 'goalKick') return { restart, taker: goalkeeperOf(team) };
+  const player = nearestOutfieldPlayer(team, position);
+  return player ? { restart, taker: player } : { restart: 'keeperRestart', taker: goalkeeperOf(team) };
+}
+
+// crossing: from goalLine.classifyBoundaryCrossing (not a goal).
 function declareOutOfPlay(crossing, now = Date.now()) {
   if (state.phase !== 'playing' || !state.ballBody) return false;
-  // Blue defends the +Z goal, red the -Z goal.
-  const defendingTeam = crossing.end > 0 ? 'blue' : 'red';
+  const toucher = lastTouchTeam();
+  let restart, receivingTeam, notice, position, defendingTeam = null;
+  if (crossing.boundary === 'touchline') {
+    // With no recorded touch, the team defending that half gets the ball.
+    receivingTeam = toucher ? OTHER_TEAM[toucher] : (crossing.z > 0 ? 'blue' : 'red');
+    restart = 'throwIn'; notice = 'TAÇ';
+    position = { x: crossing.x, y: crossing.y, z: crossing.z };
+  } else {
+    defendingTeam = crossing.end > 0 ? 'blue' : 'red';
+    position = { x: crossing.x, y: crossing.y, z: crossing.end * HALF_L };
+    if (toucher === defendingTeam) { restart = 'corner'; notice = 'KORNER'; receivingTeam = OTHER_TEAM[defendingTeam]; }
+    else { restart = 'goalKick'; notice = 'AUT'; receivingTeam = defendingTeam; }
+  }
+  const chosen = chooseRestart(restart, receivingTeam, position);
   state.outEvent = {
-    id: ++state.outSequence, defendingTeam, restart: 'goalKick',
-    startedAt: now, endsAt: now + OUT_OF_PLAY_SECONDS * 1000,
-    position: { x: crossing.x, y: crossing.y, z: crossing.end * HALF_L },
+    id: ++state.outSequence, boundary: crossing.boundary, notice, restart: chosen.restart,
+    lastTouchTeam: toucher, receivingTeam, defendingTeam, restartPlayerId: chosen.taker?.id ?? null,
+    startedAt: now, endsAt: now + OUT_OF_PLAY_SECONDS * 1000, position,
   };
   state.phase = 'outOfPlay';
   stopPlay();
@@ -191,34 +241,81 @@ function declareOutOfPlay(crossing, now = Date.now()) {
 function advanceOutOfPlay(now) {
   if (state.phase !== 'outOfPlay' || now < state.outEvent.endsAt) return;
   if (now >= state.matchEndsAt) endMatch();
-  else goalKickRestart(now);
+  else restartAfterOut(now);
 }
 
-// The defending goalkeeper restarts from inside their penalty area, on the side
-// the ball went out. Attackers are moved out of the penalty area first.
-function goalKickRestart(now) {
-  const team = state.outEvent.defendingTeam;
-  const goalSign = team === 'blue' ? 1 : -1;
-  const ballX = Math.max(-GOAL_KICK_MAX_SIDE, Math.min(GOAL_KICK_MAX_SIDE, state.outEvent.position.x));
-  const ballZ = goalSign * (HALF_L - GOAL_KICK_DISTANCE);
-  placeBall(ballX, ballZ);
-  const boxEdgeZ = HALF_L - FIELD.PENALTY_DEPTH;
+// Moves opponents of the restarting team at least RESTART_OPPONENT_DISTANCE from
+// the ball. Straight away from the ball first; near a touchline or corner that
+// can be off the pitch, so along the line or into the pitch instead.
+function clearOpponents(team, ballX, ballZ) {
+  const clampX = (x) => Math.max(PITCH_MIN_X, Math.min(PITCH_MAX_X, x));
+  const clampZ = (z) => Math.max(PITCH_MIN_Z, Math.min(PITCH_MAX_Z, z));
   for (const c of state.clients.values()) {
     if (!c.inMatch || c.team === team) continue;
-    if (Math.abs(c.pos.x) < FIELD.PENALTY_HALF_W + 1 && c.pos.z * goalSign > boxEdgeZ - 1) c.pos.z = goalSign * (boxEdgeZ - 1.5);
+    const dx = c.pos.x - ballX, dz = c.pos.z - ballZ, distance = Math.hypot(dx, dz);
+    if (distance >= RESTART_OPPONENT_DISTANCE) continue;
+    const directions = [
+      distance > 1e-3 ? { x: dx / distance, z: dz / distance } : { x: -(Math.sign(ballX) || 1), z: 0 },
+      { x: 0, z: Math.sign(dz) || -(Math.sign(ballZ) || 1) },
+      { x: -(Math.sign(ballX) || 1), z: 0 },
+      { x: 0, z: -(Math.sign(dz) || -(Math.sign(ballZ) || 1)) },
+    ];
+    for (const direction of directions) {
+      const x = clampX(ballX + direction.x * RESTART_OPPONENT_DISTANCE), z = clampZ(ballZ + direction.z * RESTART_OPPONENT_DISTANCE);
+      if (Math.hypot(x - ballX, z - ballZ) >= RESTART_OPPONENT_DISTANCE - 1e-9) { c.pos = { x, z }; break; }
+    }
   }
-  const keeper = [...state.clients.values()].find((c) => c.inMatch && c.team === team && c.position === 'KL' && c.isAI)
-    || [...state.clients.values()].find((c) => c.inMatch && c.team === team && c.slot === 0);
-  if (keeper) {
-    keeper.pos = { x: ballX, z: ballZ + goalSign * GOAL_KICK_KEEPER_OFFSET };
-    keeper.facing = { x: 0, z: -goalSign };
-    keeper.vel = { x: 0, z: 0 };
-    keeper.keeperPossessionStartedAt = now;
-    state.ballOwnerId = keeper.id;
+}
+
+// Places the taker, faces them into play and gives them the ball at their feet.
+function giveRestartBall(taker, pos, facing, now, ballOffset = RESTART_BALL_OFFSET) {
+  taker.pos = { ...pos };
+  taker.facing = facing;
+  taker.vel = { x: 0, z: 0 };
+  taker.turnRate = 0;
+  placeBall(pos.x + facing.x * ballOffset, pos.z + facing.z * ballOffset);
+  if (taker.isAI) taker.keeperPossessionStartedAt = now;
+  state.ballOwnerId = taker.id;
+}
+
+function restartAfterOut(now) {
+  const event = state.outEvent;
+  let taker = state.clients.get(event.restartPlayerId);
+  if (!taker?.inMatch || taker.team !== event.receivingTeam) {
+    // The chosen player left during the pause: choose again.
+    const initial = event.boundary === 'touchline' ? 'throwIn' : event.restart === 'goalKick' ? 'goalKick' : 'corner';
+    const chosen = chooseRestart(initial, event.receivingTeam, event.position);
+    event.restart = chosen.restart; taker = chosen.taker; event.restartPlayerId = taker?.id ?? null;
   }
+  const team = event.receivingTeam;
+  const goalSign = goalSignOf(team);
+  if (!taker) {
+    placeBall(0, 0); // no one to restart (should not happen in a match)
+  } else if (event.restart === 'throwIn') {
+    const side = Math.sign(event.position.x) || 1;
+    const z = Math.max(-(HALF_L - RESTART_EDGE_MARGIN), Math.min(HALF_L - RESTART_EDGE_MARGIN, event.position.z));
+    giveRestartBall(taker, { x: side * PITCH_MAX_X, z }, { x: -side, z: 0 }, now);
+  } else if (event.restart === 'corner') {
+    const sideX = Math.sign(event.position.x) || 1, endZ = Math.sign(event.position.z) || 1;
+    const pos = { x: sideX * PITCH_MAX_X, z: endZ * PITCH_MAX_Z };
+    const toBox = { x: -pos.x, z: endZ * (HALF_L - FIELD.PENALTY_DEPTH / 2) - pos.z };
+    const length = Math.hypot(toBox.x, toBox.z);
+    giveRestartBall(taker, pos, { x: toBox.x / length, z: toBox.z / length }, now);
+  } else {
+    // Goal kick or goalkeeper restart from inside the receiving team's penalty area.
+    const ballX = event.restart === 'goalKick' ? Math.max(-GOAL_KICK_MAX_SIDE, Math.min(GOAL_KICK_MAX_SIDE, event.position.x)) : 0;
+    const ballZ = goalSign * (HALF_L - GOAL_KICK_DISTANCE);
+    const boxEdgeZ = HALF_L - FIELD.PENALTY_DEPTH;
+    for (const c of state.clients.values()) {
+      if (!c.inMatch || c.team === team) continue;
+      if (Math.abs(c.pos.x) < FIELD.PENALTY_HALF_W + 1 && c.pos.z * goalSign > boxEdgeZ - 1) c.pos.z = goalSign * (boxEdgeZ - 1.5);
+    }
+    giveRestartBall(taker, { x: ballX, z: ballZ + goalSign * GOAL_KICK_KEEPER_OFFSET }, { x: 0, z: -goalSign }, now, GOAL_KICK_KEEPER_OFFSET);
+  }
+  if (taker) clearOpponents(team, state.ballBody.position.x, state.ballBody.position.z);
   state.looseBallUntil = 0;
   state.phase = 'playing';
-  broadcast({ type: SERVER.GOAL_KICK, ...matchSnapshot(state, now) });
+  broadcast({ type: SERVER.RESTART, ...matchSnapshot(state, now) });
 }
 
 function endMatch() {

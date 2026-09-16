@@ -1,26 +1,12 @@
 import { matchSnapshot } from './snapshot.js';
-import { classifyGoalLineCrossing } from './goalLine.js';
+import { classifyBoundaryCrossing } from './goalLine.js';
 import { isMatchPhase } from '../../shared/matchPhases.js';
 import { SERVER } from '../../src/network/protocol.js';
 import { BROADCAST_HZ, WIN_SCORE, MAX_BALL_SPEED, MAX_BALL_HEIGHT, PHYSICS_STEP, PHYSICS_MAX_SUBSTEPS } from '../core/config.js';
-import { HALF_W, BALL_R } from '../../shared/field.js';
+
 export function createSimulation({ state, broadcast, players, physics, actions, match }) {
 let lastTick = Date.now();
 let broadcastAccum = 0;
-
-// Touchlines stay walled (no throw-ins). Goal lines are open: crossing them is
-// judged by classifyGoalLineCrossing as a goal or out of play.
-function containBallWithinTouchlines() {
-  const ball = state.ballBody;
-  const maxX = HALF_W - BALL_R;
-  if (ball.position.x < -maxX) {
-    ball.position.x = -maxX;
-    if (ball.velocity.x < 0) ball.velocity.x *= -.45;
-  } else if (ball.position.x > maxX) {
-    ball.position.x = maxX;
-    if (ball.velocity.x > 0) ball.velocity.x *= -.45;
-  }
-}
 
 function tick() {
   const now = Date.now();
@@ -47,7 +33,6 @@ function tick() {
     state.world.step(PHYSICS_STEP, dt, PHYSICS_MAX_SUBSTEPS);
     actions.updateBallControl(dt);
     for (const c of state.clients.values()) physics.resolvePlayerBallContact(c);
-    containBallWithinTouchlines();
 
     if (ball.velocity.length() > MAX_BALL_SPEED) {
       ball.velocity.scale(MAX_BALL_SPEED / ball.velocity.length(), ball.velocity);
@@ -57,8 +42,9 @@ function tick() {
       if (ball.velocity.y > 0) ball.velocity.y = 0;
     }
 
-    const crossing = classifyGoalLineCrossing(previous, ball.position, dt);
-    if (crossing?.goal) {
+    // Touchlines and goal lines are open; the server judges every exit.
+    const crossing = classifyBoundaryCrossing(previous, ball.position, dt);
+    if (crossing?.boundary === 'goalLine' && crossing.goal) {
       // Ball over the +Z line scores for red (blue defends +Z), and vice versa.
       match.confirmGoal(crossing.end > 0 ? 'red' : 'blue', now);
     } else if (crossing) {
