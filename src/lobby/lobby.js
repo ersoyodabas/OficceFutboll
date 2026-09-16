@@ -1,10 +1,11 @@
-import { CLIENT } from '../network/protocol.js';
+import { CLIENT, SERVER } from '../network/protocol.js';
 import { FIELD } from '../../shared/field.js';
 import { LobbyView } from './lobbyView.js';
 import { normalizeServerUrl } from '../network/urls.js';
-export function createLobby({ state, ui, network, grassMat, createPitchMarkings, createFootballer }) {
+export function createLobby({ state, ui, network, events, audio, grassMat, createPitchMarkings, createFootballer }) {
 let lobbyView = null;
 let joinInProgress = false;
+let lastLobbySfxSentAt = 0;
 function renderLobby(msg) {
   ui.dom.scoreBlueEl.textContent = msg.score.blue;
   ui.dom.scoreRedEl.textContent = msg.score.red;
@@ -18,8 +19,8 @@ function renderLobby(msg) {
     ui.dom.$('profileName').textContent = me.name;
     ui.dom.$('profileAvatar').textContent = Array.from(me.name)[0].toLocaleUpperCase('tr');
     ui.dom.$('profileRole').textContent = Number.isInteger(state.mySlot)
-      ? `${state.myTeam === 'blue' ? 'Mavi tak?m' : 'K?rm?z? tak?m'}${me.isHost ? ' ? Lobi y?neticisi' : ''}`
-      : 'Sahada bir yer se?';
+      ? `${state.myTeam === 'blue' ? 'Mavi takım' : 'Kırmızı takım'}${me.isHost ? ' • Lobi yöneticisi' : ''}`
+      : 'Sahada bir yer seç';
   }
   const inCountdown = msg.phase === 'countdown';
   const matchInProgress = msg.phase === 'playing' || msg.phase === 'ended';
@@ -36,6 +37,13 @@ function renderLobby(msg) {
       createFootballer: (team, number, target) => createFootballer(team, number, '', false, target),
       onSelect: (team, slot) => {
         if (!network.isOpen()) return;
+        audio.playSfx('click');
+        if (team === state.myTeam && slot === state.mySlot) {
+          // clicking your own placed character just gives a click cue to nearby players too
+          const now = Date.now();
+          if (now - lastLobbySfxSentAt > 3000) { lastLobbySfxSentAt = now; network.send({ type: CLIENT.LOBBY_SFX }); }
+          return;
+        }
         ui.dom.slotStatus.textContent = '';
         network.send({ type: CLIENT.SELECT_SLOT, team, slot });
       },
@@ -44,17 +52,17 @@ function renderLobby(msg) {
   lobbyView.update(players, state.myId, inCountdown || !!me?.inMatch);
   ui.dom.slotStatus.textContent = '';
   ui.dom.readyBtn.disabled = !selected || inCountdown || matchInProgress;
-  ui.dom.readyBtn.textContent = matchInProgress ? 'MA? BEKLEN?YOR' : state.myReady ? '? HAZIR ? ?PTAL ET' : 'HAZIRIM';
+  ui.dom.readyBtn.textContent = matchInProgress ? 'MAÇ BEKLENİYOR' : state.myReady ? '✔ HAZIR • İPTAL ET' : 'HAZIRIM';
   ui.dom.readyBtn.classList.toggle('isReady', state.myReady);
   ui.dom.$('readyMeterFill').style.width = `${players.length ? readyCount / players.length * 100 : 0}%`;
   if (matchInProgress) {
-    ui.dom.lobbyStatus.textContent = 'Devam eden ma? bitince yeni ma?a kat?labilirsin.';
+    ui.dom.lobbyStatus.textContent = 'Devam eden maç bitince yeni maça katılabilirsin.';
   } else if (inCountdown) {
-    ui.dom.lobbyStatus.textContent = 'Herkes haz?r! Ma? ba?l?yor?';
+    ui.dom.lobbyStatus.textContent = 'Herkes hazır! Maç başlıyor…';
   } else {
-    ui.dom.lobbyStatus.textContent = selected ? 'Yerini ald?n. Haz?rsan sahaya ??kal?m.' : 'Tak?m?na kat?lmak i?in sahada bo? bir yere t?kla.';
+    ui.dom.lobbyStatus.textContent = selected ? 'Yerini aldın. Hazırsan sahaya çıkalım.' : 'Takımına katılmak için sahada boş bir yere tıkla.';
   }
-  ui.dom.readyProgress.textContent = `${readyCount} / ${players.length} oyuncu haz?r`;
+  ui.dom.readyProgress.textContent = `${readyCount} / ${players.length} oyuncu hazır`;
 }
 ui.dom.connectBtn.addEventListener('click', joinLobby);
 [ui.dom.serverInput, ui.dom.nameInput].forEach((el) => el.addEventListener('keydown', (e) => {
@@ -76,7 +84,7 @@ async function joinLobby() {
   }
   joinInProgress = true;
   ui.dom.connectBtn.disabled = true;
-  ui.dom.connectBtn.textContent = 'Kat?l?yor?';
+  ui.dom.connectBtn.textContent = 'Katılıyor…';
   if (state.autoJoinRequested) ui.updateConnectionStatus('connecting');
   try {
     await network.ensureConnected();
@@ -111,7 +119,51 @@ async function joinLobby() {
 }
 ui.dom.readyBtn.addEventListener('click', () => {
   if (ui.dom.readyBtn.disabled) return; // countdown already running
+  audio.playSfx('confirm');
   network.send({ type: CLIENT.READY, ready: !state.myReady });
+});
+
+function appendChatMessage(entry) {
+  const row = document.createElement('div');
+  row.className = 'chat-message';
+  const sender = document.createElement('span');
+  sender.className = 'chat-sender' + (entry.team === 'blue' ? ' blue' : entry.team === 'red' ? ' red' : '');
+  sender.textContent = entry.senderName;
+  const text = document.createElement('span');
+  text.className = 'chat-text';
+  text.textContent = entry.message;
+  row.append(sender, document.createTextNode(': '), text);
+  ui.dom.chatMessages.appendChild(row);
+  ui.dom.chatMessages.scrollTop = ui.dom.chatMessages.scrollHeight;
+}
+events.on(SERVER.NEW_CHAT_MESSAGE, (msg) => appendChatMessage(msg.message));
+events.on(SERVER.LOBBY_SFX, (msg) => { if (msg.senderId !== state.myId) audio.playSfx(msg.sfx || 'click'); });
+ui.dom.chatForm.addEventListener('submit', (event) => {
+  event.preventDefault();
+  const text = ui.dom.chatInput.value.trim();
+  if (!text || !network.isOpen()) return;
+  network.send({ type: CLIENT.SEND_CHAT_MESSAGE, message: text });
+  ui.dom.chatInput.value = '';
+});
+ui.dom.chatToggleBtn.addEventListener('click', () => {
+  const collapsed = ui.dom.chatPanel.classList.toggle('collapsed');
+  ui.dom.chatToggleBtn.setAttribute('aria-expanded', String(!collapsed));
+  ui.dom.chatToggleBtn.textContent = collapsed ? '▸' : '▾';
+});
+
+// Easter egg: three quick clicks on the lobby logo trigger a crowd cheer.
+let logoClickTimes = [];
+function handleLogoActivate() {
+  const now = Date.now();
+  logoClickTimes = logoClickTimes.filter((t) => now - t < 1500).concat(now);
+  if (logoClickTimes.length >= 3) {
+    logoClickTimes = [];
+    audio.playSfx('applause');
+  }
+}
+ui.dom.lobbyLogo.addEventListener('click', handleLogoActivate);
+ui.dom.lobbyLogo.addEventListener('keydown', (event) => {
+  if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); handleLogoActivate(); }
 });
 
 function start() { if (state.autoJoinRequested) joinLobby(); }

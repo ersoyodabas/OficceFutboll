@@ -49,7 +49,7 @@ const network = createSession({ state, ui, players,
   onMessage: (message) => messages.handleMessage(message),
 });
 const controls = createControls({ state, ui, network, preferences, settings });
-const lobby = createLobby({ state, ui, network, ...field, ...footballers });
+const lobby = createLobby({ state, ui, network, events, audio, ...field, ...footballers });
 const messages = createMessageHandler({ state, ui, lobby, players, ball, controls,
   canvas: renderer.domElement, events, audio,
 });

@@ -2,7 +2,10 @@ import { CLIENT, SERVER } from '../../src/network/protocol.js';
 import { MIN_PLAYERS_TO_START, POSITIONS, DEFAULT_POSITION } from '../core/config.js';
 import { HALF_W, HALF_L, GOAL_HALF_W, GOAL_HEIGHT, BALL_R, PLAYER_R, FIELD } from '../../shared/field.js';
 import crypto from 'node:crypto';
-export function createConnectionHandler({ state, send, broadcastLobby, rosterPayload, ready, actions, match, lobby }) {
+
+const LOBBY_SFX_COOLDOWN_MS = 3000;
+
+export function createConnectionHandler({ state, send, broadcast, broadcastLobby, rosterPayload, ready, actions, match, lobby, chat }) {
 function onConnection(ws) {
   console.log('[SERVER] Connection opened');
   const id = crypto.randomUUID();
@@ -12,6 +15,7 @@ function onConnection(ws) {
     input: { x: 0, z: 0, sprint: false },
     facing: { x: 0, z: 1 }, cooldowns: { A: 0, S: 0, D: 0 },
     slideRemaining: 0, slideDirection: null, recoveryRemaining: 0, standingActive: 0, lastAction: null,
+    lastSfxAt: 0,
   };
   let joined = false;
 
@@ -64,6 +68,13 @@ function onConnection(ws) {
       };
     } else if (msg.type === CLIENT.ACTION && joined) {
       actions.performAction(client, msg.key);
+    } else if (msg.type === CLIENT.SEND_CHAT_MESSAGE && joined) {
+      chat.addMessage(client, msg.message);
+    } else if (msg.type === CLIENT.LOBBY_SFX && joined) {
+      const now = Date.now();
+      if (now - client.lastSfxAt < LOBBY_SFX_COOLDOWN_MS) return;
+      client.lastSfxAt = now;
+      broadcast({ type: SERVER.LOBBY_SFX, senderId: id, sfx: 'click' });
     }
   });
 

@@ -39,6 +39,13 @@ const reconnectBtn = $('reconnectBtn');
 
 const copyInviteLinkBtn = $('copyInviteLinkBtn');
 const inviteLinkStatus = $('inviteLinkStatus');
+const lobbyMusicQuickVolume = $('lobbyMusicQuickVolume');
+const lobbyLogo = $('lobbyLogo');
+const chatPanel = $('chatPanel');
+const chatToggleBtn = $('chatToggleBtn');
+const chatMessages = $('chatMessages');
+const chatForm = $('chatForm');
+const chatInput = $('chatInput');
 
 const countdownOverlay = $('countdownOverlay');
 const countdownNumber = $('countdownNumber');
@@ -113,6 +120,9 @@ function updateControlHint(value = preferences.get()) {
   $('menuBtn').textContent = `${keyLabel(value.keys.menu)} · Menü`;
 }
 preferences.subscribe(updateControlHint); updateControlHint();
+function syncLobbyMusicQuickVolume(value = preferences.get()) { lobbyMusicQuickVolume.value = String(value.lobbyMusicVolume); }
+preferences.subscribe(syncLobbyMusicQuickVolume); syncLobbyMusicQuickVolume();
+lobbyMusicQuickVolume.addEventListener('input', () => preferences.set({ lobbyMusicVolume: Number(lobbyMusicQuickVolume.value) }));
 $('menuBtn').addEventListener('click', () => setMatchMenu(true));
 resumeBtn.addEventListener('click', () => setMatchMenu(false));
 reconnectBtn.addEventListener('click', () => { showOverlay(connectOverlay); updateConnectionStatus('idle'); });
@@ -126,5 +136,5 @@ function showMatchEnd(msg) {
     showOverlay(endOverlay);
     hud.hidden = true; hint.hidden = true;
 }
-return { showMatchEnd, dom: { $, hud, hint, scoreBlueEl, scoreRedEl, myFlagBlue, myFlagRed, matchClockEl, posLabelEl, connectOverlay, lobbyOverlay, endOverlay, disconnectOverlay, matchMenu, resumeBtn, leaveMatchBtn, serverInput, nameInput, connectBtn, connStatus, lobbyStatus, slotStatus, readyBtn, readyProgress, endResultEl, endScoreEl, disconnectMsg, reconnectBtn, copyInviteLinkBtn, inviteLinkStatus, countdownOverlay, countdownNumber, countdownSub }, showOverlay, updateConnectionStatus, setMatchMenu, showCountdownOverlay, hideCountdownOverlay, applyStateHUD, updateClock };
+return { showMatchEnd, dom: { $, hud, hint, scoreBlueEl, scoreRedEl, myFlagBlue, myFlagRed, matchClockEl, posLabelEl, connectOverlay, lobbyOverlay, endOverlay, disconnectOverlay, matchMenu, resumeBtn, leaveMatchBtn, serverInput, nameInput, connectBtn, connStatus, lobbyStatus, slotStatus, readyBtn, readyProgress, endResultEl, endScoreEl, disconnectMsg, reconnectBtn, copyInviteLinkBtn, inviteLinkStatus, lobbyLogo, countdownOverlay, countdownNumber, countdownSub, chatPanel, chatToggleBtn, chatMessages, chatForm, chatInput }, showOverlay, updateConnectionStatus, setMatchMenu, showCountdownOverlay, hideCountdownOverlay, applyStateHUD, updateClock };
 }

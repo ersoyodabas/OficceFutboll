@@ -22,8 +22,11 @@
   const PLAYER_VISUAL_SCALE = 1.18;
   const BALL_VISUAL_SCALE = 0.9;
 
-  // ---------- Default LAN server ----------
-  const DEFAULT_SERVER_URL = 'ws://10.17.12.93:3000';
+  // ---------- Default server ----------
+  const LEGACY_SERVER_URL = 'ws://10.17.12.93:3000';
+  const DEFAULT_SERVER_URL = /^https?:$/i.test(window.location.protocol)
+    ? `${window.location.protocol === 'https:' ? 'wss' : 'ws'}://${window.location.host}`
+    : 'ws://localhost:3000';
   const SERVER_STORAGE_KEY = 'officeFootballServer';
 
   // Accepts "10.17.12.93:3000" or "ws://10.17.12.93:3000" and always returns a
@@ -95,7 +98,7 @@
   (function initServerInput() {
     let savedServer = null;
     try { savedServer = localStorage.getItem(SERVER_STORAGE_KEY); } catch (e) { /* storage not available */ }
-    serverInput.value = savedServer?.trim() || DEFAULT_SERVER_URL;
+    serverInput.value = savedServer?.trim() === LEGACY_SERVER_URL ? DEFAULT_SERVER_URL : (savedServer?.trim() || DEFAULT_SERVER_URL);
   })();
   try {
     const savedName = localStorage.getItem('officeFootballPlayerName');
