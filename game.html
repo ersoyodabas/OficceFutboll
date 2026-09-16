@@ -2,6 +2,7 @@
 <html lang="tr">
 <head>
 <meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Ofis Futbolu 3D</title>
 <style>
   html, body {
@@ -201,30 +202,88 @@
   #connStatus.success { color: #5ce87a; }
   #joinStatus { font-size: 13px; min-height: 18px; color: #ff6b6b; }
 
-  .rosters { display: flex; gap: 24px; margin-top: 4px; flex-wrap: wrap; justify-content: center; }
-  .roster { min-width: 190px; text-align: left; }
-  .roster h3 { margin: 0 0 6px; font-size: 13px; letter-spacing: 0.5px; }
+  #lobbyOverlay { justify-content: flex-start; background: radial-gradient(ellipse at top left, #193b48e8, transparent 65%), #0b121bf5; padding: 40px 24px; }
+  .lobby-shell { width: min(1120px, 100%); margin: auto; text-align: left; }
+  .lobby-header, .team-header, .lobby-footer { display: flex; align-items: center; justify-content: space-between; gap: 20px; }
+  .eyebrow { display: block; color: #7be0b6; font-size: 11px; font-weight: 800; letter-spacing: 2px; margin-bottom: 10px; }
+  #lobbyOverlay h1 { font-size: 34px; letter-spacing: -1px; }
+  #lobbyOverlay h2 { font-size: 18px; margin: 0; }
+  .invite-area { text-align: right; }
+  #lobbyOverlay #inviteLinkStatus { margin: 8px 0 0; font-size: 12px; }
+  .lobby-grid { display: grid; grid-template-columns: 260px minmax(0, 1fr); gap: 22px; margin: 28px 0 22px; }
+  .player-panel, .roster, .lobby-footer { background: #131f2b; border: 1px solid #2a3a49; border-radius: 16px; }
+  .player-panel { padding: 24px; }
+  .profile-avatar { display: grid; place-items: center; width: 58px; height: 58px; border-radius: 18px; background: #214a62; color: #9fdcff; font-size: 23px; font-weight: 800; margin: 24px 0 14px; }
+  #profileName { display: block; font-size: 20px; overflow-wrap: anywhere; }
+  #profileRole { display: block; font-size: 12px; color: #9db0c3; margin: 7px 0 24px; }
+  .player-panel .field { width: 100%; margin-top: 18px; }
+  .field select option { background: #162332; color: #fff; }
+  .panel-note { margin-top: 20px !important; font-size: 12px !important; color: #9db0c3 !important; }
+  .squad-heading { display: flex; justify-content: space-between; align-items: center; margin: 3px 0 16px; }
+  #lobbyPlayerCount { font-size: 12px; color: #a8bdce; }
+  .rosters { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+  .roster { min-width: 0; text-align: left; overflow: hidden; }
+  .team-header { padding: 20px; border-bottom: 1px solid #ffffff10; }
+  .roster.blue .team-header { background: linear-gradient(120deg, #203e61, #152333); border-top: 3px solid #5db8ff; }
+  .roster.red .team-header { background: linear-gradient(120deg, #512b37, #211f2c); border-top: 3px solid #ff7e89; }
+  .team-header small { display: block; color: #b6c3d1; margin-top: 7px; font-size: 11px; }
+  .team-count { font-size: 24px; font-weight: 800; }
+  .roster h3 { margin: 0; font-size: 13px; letter-spacing: 0.8px; }
   .roster.blue h3 { color: #5db8ff; }
   .roster.red h3 { color: #ff6b6b; }
-  .roster ul { list-style: none; margin: 0; padding: 0; font-size: 13px; }
-  .roster li { padding: 4px 6px; opacity: 0.9; display: flex; align-items: center; justify-content: space-between; gap: 6px; border-radius: 5px; }
-  .roster li.me { font-weight: 700; background: rgba(255,255,255,0.08); }
-  .roster li .pos { opacity: 0.6; font-size: 11px; }
-  .roster li .hostbadge { font-size: 11px; }
+  .roster ul { list-style: none; margin: 0; padding: 12px; font-size: 13px; min-height: 200px; }
+  .roster li { padding: 12px; display: flex; flex-wrap: wrap; align-items: center; gap: 10px; border: 1px solid #ffffff09; background: #ffffff03; border-radius: 10px; margin-bottom: 8px; }
+  .roster li.me { background: #ffffff09; border-color: #ffffff30; }
+  .roster li .player-info { flex: 1; min-width: 90px; overflow-wrap: anywhere; }
+  .roster li .player-name { display: block; font-weight: 650; line-height: 1.5; }
+  .roster li .pos { display: block; color: #9db0c3; font-size: 11px; margin-top: 5px; }
+  .roster li .hostbadge, .self-badge { display: inline-block; font-size: 9px; color: #ffda88; margin-left: 6px; }
+  .self-badge { color: #90d7ff; }
+  .roster li.empty-roster { justify-content: center; min-height: 150px; border: 1px dashed #ffffff18; color: #94a9bb; text-align: center; line-height: 1.7; }
   .roster li .moveBtn {
     background: rgba(255,255,255,0.15);
     border: none; border-radius: 4px; color: #fff;
-    font-size: 10px; padding: 2px 6px; cursor: pointer;
+    font-size: 10px; padding: 5px 8px; cursor: pointer;
   }
   #inviteLinkStatus { font-size: 13px; min-height: 18px; margin: -6px 0 2px; }
   #inviteLinkStatus.success { color: #5ce87a; }
   #inviteLinkStatus.error { color: #ff6b6b; }
 
-  .roster li .readyState { font-size: 11px; font-weight: 700; white-space: nowrap; }
+  .roster li .readyState { font-size: 10px; font-weight: 700; white-space: nowrap; padding: 5px 7px; border-radius: 5px; background: #ffffff06; }
   .roster li .readyState.ready { color: #5ce87a; }
   .roster li .readyState.waiting { color: rgba(255,255,255,0.45); }
   #readyBtn.isReady { background: linear-gradient(180deg, #2d7fd6, #1c5ea3); box-shadow: 0 4px 14px rgba(45,127,214,0.45); }
-  #readyProgress { font-size: 12px; color: rgba(255,255,255,0.6); margin-top: -8px; }
+  #readyProgress { font-size: 12px; color: #a8bdce; margin-top: 5px; }
+  .lobby-footer { padding: 20px 24px; }
+  .ready-meter { width: 180px; height: 4px; border-radius: 4px; overflow: hidden; background: #2a3a49; margin-top: 12px; }
+  #readyMeterFill { display: block; height: 100%; background: #7be0b6; width: 0; transition: width .2s; }
+  #readyBtn { min-width: 160px; }
+  button:focus-visible { outline: 2px solid #a1e9ff; outline-offset: 4px; }
+  #matchMenu { z-index: 80; background: #050b14a8; backdrop-filter: blur(8px); justify-content: flex-start; }
+  .menu-card { box-sizing: border-box; flex-shrink: 0; margin: auto; width: min(420px, 100%); padding: 32px; background: linear-gradient(145deg, #1c3040, #101a26); border: 1px solid #3e5264; border-radius: 22px; box-shadow: 0 24px 90px #0009; text-align: left; }
+  .menu-card h1 { margin-bottom: 12px; }
+  .menu-card p { color: #adbdcb; }
+  .menu-score { display: flex; justify-content: space-between; align-items: center; padding: 20px 0; margin: 16px 0; border-block: 1px solid #ffffff12; font-size: 12px; font-weight: 700; }
+  .menu-score strong { font-size: 28px; color: #fff; }
+  .menu-score .blue { color: #83caff; }
+  .menu-score .red { color: #ff909b; }
+  .menu-card button { width: 100%; margin-top: 12px; padding: 14px; }
+  .menu-card .menu-hint { text-align: center; margin-top: 22px; font-size: 12px; }
+  #menuBtn { position: absolute; right: 16px; top: 84px; pointer-events: auto; }
+  @media (max-width: 850px) {
+    .lobby-grid { grid-template-columns: 1fr; }
+    .profile-avatar { margin-top: 16px; }
+    .player-panel { display: grid; grid-template-columns: 1fr 1fr; gap: 0 24px; }
+    .player-panel h2, .player-panel .panel-note { grid-column: 1 / -1; }
+  }
+  @media (max-width: 560px) {
+    #lobbyOverlay { padding: 24px 14px; }
+    .lobby-header, .lobby-footer { align-items: stretch; flex-direction: column; }
+    .invite-area { text-align: left; }
+    .rosters, .player-panel { grid-template-columns: 1fr; }
+    .roster ul { min-height: 80px; }
+    #hint { font-size: 10px; bottom: 50px; }
+  }
 
   /* ---------- synchronized countdown overlay ---------- */
   #countdownOverlay {
@@ -268,6 +327,7 @@
         </svg>
       </div>
       <div id="posLabel"></div>
+      <button class="secondary" id="menuBtn" type="button" aria-haspopup="dialog">ESC · Menü</button>
     </div>
 
     <div id="hint" hidden>
@@ -305,28 +365,41 @@
     </div>
 
     <div class="overlay" id="lobbyOverlay" hidden>
-      <h1>Lobi</h1>
-      <button class="secondary" id="copyInviteLinkBtn" type="button">🔗 Davet Linki Kopyala</button>
-      <p id="inviteLinkStatus"></p>
-      <p id="lobbyStatus">Diğer oyuncuların katılması bekleniyor…</p>
-      <div class="rosters">
-        <div class="roster blue">
-          <h3>MAVİ TAKIM</h3>
-          <ul id="rosterBlue"></ul>
+      <div class="lobby-shell">
+        <header class="lobby-header">
+          <div><span class="eyebrow">OFİS FUTBOLU / MAÇ MERKEZİ</span><h1>Maça hazırlan.</h1><p>Takımını seç, yerini al, sahaya çık.</p></div>
+          <div class="invite-area"><button class="secondary" id="copyInviteLinkBtn" type="button">＋ Arkadaşını davet et</button><p id="inviteLinkStatus" role="status"></p></div>
+        </header>
+        <div class="lobby-grid">
+          <section class="player-panel" aria-labelledby="playerPanelTitle">
+            <h2 id="playerPanelTitle">Oyuncu kartın</h2>
+            <div><div class="profile-avatar" id="profileAvatar" aria-hidden="true">O</div><strong id="profileName">Oyuncu</strong><span id="profileRole">Takım oyuncusu</span></div>
+            <div class="field"><label for="myTeamSelect">Takımın</label><select id="myTeamSelect"><option value="blue">Mavi takım</option><option value="red">Kırmızı takım</option></select></div>
+            <div class="field"><label for="myPosSelect">Sahadaki mevkin</label><select id="myPosSelect"></select></div>
+            <p class="panel-note">Takım veya mevki değiştirirsen yeniden hazır olman gerekir.</p>
+          </section>
+          <section aria-labelledby="squadTitle">
+            <div class="squad-heading"><h2 id="squadTitle">Takım kadroları</h2><span id="lobbyPlayerCount">0 oyuncu</span></div>
+            <div class="rosters">
+              <section class="roster blue" aria-labelledby="blueTitle"><div class="team-header"><div><h3 id="blueTitle">MAVİ TAKIM</h3><small id="blueReadySummary">0 oyuncu hazır</small></div><span class="team-count" id="blueRosterCount">0</span></div><ul id="rosterBlue"></ul></section>
+              <section class="roster red" aria-labelledby="redTitle"><div class="team-header"><div><h3 id="redTitle">KIRMIZI TAKIM</h3><small id="redReadySummary">0 oyuncu hazır</small></div><span class="team-count" id="redRosterCount">0</span></div><ul id="rosterRed"></ul></section>
+            </div>
+          </section>
         </div>
-        <div class="roster red">
-          <h3>KIRMIZI TAKIM</h3>
-          <ul id="rosterRed"></ul>
-        </div>
+        <footer class="lobby-footer"><div><p id="lobbyStatus" role="status">Diğer oyuncuların katılması bekleniyor…</p><p id="readyProgress"></p><div class="ready-meter" aria-hidden="true"><span id="readyMeterFill"></span></div></div><button class="primary" id="readyBtn" type="button">HAZIRIM</button></footer>
       </div>
-      <div class="field" style="width:auto; flex-direction: row; align-items: center; gap: 10px;">
-        <label for="myTeamSelect" style="margin:0;">Takımım:</label>
-        <select id="myTeamSelect"><option value="blue">Mavi</option><option value="red">Kırmızı</option></select>
-        <label for="myPosSelect" style="margin:0;">Mevkim:</label>
-        <select id="myPosSelect"></select>
+    </div>
+
+    <div class="overlay" id="matchMenu" role="dialog" aria-modal="true" aria-labelledby="menuTitle" aria-describedby="menuDescription" hidden>
+      <div class="menu-card">
+        <span class="eyebrow">OFİS FUTBOLU / MAÇ MENÜSÜ</span>
+        <h1 id="menuTitle">Oyun menüsü</h1>
+        <p id="menuDescription">Menü açıkken oyuncun bekler. Çevrim içi maç devam eder.</p>
+        <div class="menu-score"><span class="blue">MAVİ</span><strong id="menuScore">0 : 0</strong><span class="red">KIRMIZI</span></div>
+        <button class="primary" id="resumeBtn" type="button">Oyuna devam et</button>
+        <button class="secondary" id="leaveMatchBtn" type="button">Maçtan çık · Lobiye dön</button>
+        <p class="menu-hint"><kbd>ESC</kbd> ile oyuna dön</p>
       </div>
-      <button class="primary" id="readyBtn" type="button">HAZIR</button>
-      <p id="readyProgress"></p>
     </div>
 
     <div id="countdownOverlay" hidden>

@@ -123,6 +123,7 @@ function broadcast(msg) {
 function rosterPayload() {
   return Array.from(clients.values()).map((c) => ({
     id: c.id, name: c.name, team: c.team, position: c.position, isHost: c.id === hostId, ready: !!c.ready,
+    inMatch: !!c.inMatch, isAI: !!c.isAI,
   }));
 }
 
@@ -312,6 +313,10 @@ function abortMatchToLobby() {
   world = null;
   ballBody = null;
   ballOwnerId = null;
+  clients.delete('ai_keeper_blue');
+  clients.delete('ai_keeper_red');
+  score = { blue: 0, red: 0 };
+  if (!clients.has(hostId)) hostId = clients.keys().next().value || null;
   for (const c of clients.values()) { c.inMatch = false; c.ready = false; }
   phase = 'lobby';
   broadcastLobby();
@@ -812,8 +817,21 @@ wss.on('connection', (ws) => {
       cancelCountdown();
       broadcastLobby();
       console.log('[SERVER] Broadcasting lobby state');
+    } else if (msg.type === 'leave_match' && joined) {
+      if (phase !== 'playing') return;
+      client.inMatch = false;
+      client.ready = false;
+      client.input = { x: 0, z: 0, sprint: false };
+      client.vel = { x: 0, z: 0 };
+      client.slideRemaining = 0;
+      client.recoveryRemaining = 0;
+      client.standingActive = 0;
+      if (ballOwnerId === id) releaseBall();
+      send(ws, { type: 'lobby_returned' });
+      if (!Array.from(clients.values()).some((c) => c.inMatch && !c.isAI)) abortMatchToLobby();
+      else broadcastLobby();
     } else if (msg.type === 'update_self' && joined) {
-      if (phase !== 'lobby') return;
+      if (phase === 'countdown' || client.inMatch) return;
       if (msg.team === 'blue' || msg.team === 'red') client.team = msg.team;
       if (msg.position) client.position = positionFor(msg.position);
       client.ready = false; // team/position changed — stale readiness doesn't carry over
@@ -832,6 +850,7 @@ wss.on('connection', (ws) => {
       broadcastLobby();
       checkAutoStart();
     } else if (msg.type === 'input' && joined) {
+      if (phase !== 'playing' || !client.inMatch) return;
       client.input = {
         x: Math.max(-1, Math.min(1, Number(msg.x) || 0)),
         z: Math.max(-1, Math.min(1, Number(msg.z) || 0)),
@@ -857,8 +876,7 @@ wss.on('connection', (ws) => {
       // countdown can't meaningfully continue either way)
       cancelCountdown();
     } else if (phase === 'playing') {
-      const { blue, red } = teamCounts();
-      if (blue < 1 || red < 1) abortMatchToLobby();
+      if (!Array.from(clients.values()).some((c) => c.inMatch && !c.isAI)) abortMatchToLobby();
     } else if (phase === 'lobby') {
       // someone who wasn't ready leaving might be exactly what was blocking
       // the remaining, already-ready players from starting
@@ -886,21 +904,22 @@ function getLanIPv4Addresses() {
 const HOST = '0.0.0.0'; // listen on all network interfaces, not just localhost
 
 httpServer.listen(PORT, HOST, () => {
+  const listeningPort = httpServer.address().port;
   const lanAddrs = getLanIPv4Addresses();
   console.log('========================================');
   console.log(' OFFICE FUTBOLL SERVER');
   console.log('========================================');
   console.log('Local:');
-  console.log(`  ws://localhost:${PORT}`);
+  console.log(`  ws://localhost:${listeningPort}`);
   console.log('');
   console.log('LAN:');
   if (lanAddrs.length) {
-    lanAddrs.forEach((ip) => console.log(`  ws://${ip}:${PORT}`));
+    lanAddrs.forEach((ip) => console.log(`  ws://${ip}:${listeningPort}`));
   } else {
     console.log('  (LAN arayuzu bulunamadi)');
   }
   console.log('');
-  console.log(`Port: ${PORT}`);
+  console.log(`Port: ${listeningPort}`);
   console.log('');
   console.log('Waiting for players...');
   console.log('========================================');

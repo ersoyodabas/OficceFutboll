@@ -58,6 +58,9 @@
   const lobbyOverlay = $('lobbyOverlay');
   const endOverlay = $('endOverlay');
   const disconnectOverlay = $('disconnectOverlay');
+  const matchMenu = $('matchMenu');
+  const resumeBtn = $('resumeBtn');
+  const leaveMatchBtn = $('leaveMatchBtn');
 
   const serverInput = $('serverInput');
   const nameInput = $('nameInput');
@@ -93,6 +96,7 @@
   const countdownSub = $('countdownSub');
 
   function showOverlay(el) {
+    setMatchMenu(false);
     [connectOverlay, pickOverlay, lobbyOverlay, endOverlay, disconnectOverlay].forEach((o) => { o.hidden = (o !== el); });
   }
 
@@ -655,6 +659,7 @@
   let phase = 'idle';
   let positionsData = null;
   let joined = false;
+  let waitingInLobby = false;
   // Match clock is driven by the server's 'matchStart' timestamp (wall-clock,
   // Date.now()-based) rather than each client's own performance.now() at
   // whatever moment its first 'state' packet happens to arrive — see
@@ -783,6 +788,10 @@
       handleMessage(msg);
     };
     ws.onclose = () => {
+      phase = 'idle';
+      waitingInLobby = false;
+      hideCountdownOverlay();
+      setMatchMenu(false);
       if (pendingJoin) pendingJoin.reject(new Error('Sunucuyla bağlantı kesildi.'));
       connecting = false;
       connectBtn.disabled = false;
@@ -839,6 +848,7 @@
         populatePositionSelect(myPosSelect, myPosition);
       }
       phase = msg.phase;
+      isHost = msg.hostId === myId;
       if (!joined) {
         countBlueEl.textContent = msg.players.filter((p) => p.team === 'blue').length;
         countRedEl.textContent = msg.players.filter((p) => p.team === 'red').length;
@@ -850,7 +860,8 @@
         pendingJoin = null;
       }
       renderLobby(msg);
-      if (phase === 'lobby' || phase === 'countdown') {
+      if (phase === 'lobby' || phase === 'countdown') waitingInLobby = false;
+      if (phase === 'lobby' || phase === 'countdown' || waitingInLobby) {
         if (lobbyOverlay.hidden) console.log('[JOIN] Switching UI to lobby');
         showOverlay(lobbyOverlay);
         hud.hidden = true; hint.hidden = true;
@@ -864,11 +875,21 @@
       isHost = msg.isHost;
       joined = true;
       positionsData = msg.positions;
+    } else if (msg.type === 'lobby_returned') {
+      waitingInLobby = true;
+      clearGameInput();
+      showOverlay(lobbyOverlay);
+      hud.hidden = true; hint.hidden = true;
+      clearEntities();
+      hideCountdownOverlay();
+      myTeamSelect.focus({ preventScroll: true });
     } else if (msg.type === 'countdownStart') {
       showCountdownOverlay(msg.startAt, msg.duration);
     } else if (msg.type === 'countdownCancelled') {
       hideCountdownOverlay();
     } else if (msg.type === 'matchStart') {
+      waitingInLobby = false;
+      clearGameInput();
       // Server-authoritative transition: every client switches to the pitch
       // because the server said so, not because each one independently
       // decided its first 'state' packet had arrived.
@@ -879,6 +900,7 @@
       hud.hidden = false; hint.hidden = false;
       renderer.domElement.focus({ preventScroll: true });
     } else if (msg.type === 'state') {
+      if (waitingInLobby || !joined) return;
       if (typeof msg.startedAt === 'number' && msg.startedAt > 0) serverMatchStartedAt = msg.startedAt;
       if (phase !== 'playing') {
         // fallback for a client that connects mid-match and so never saw the
@@ -892,6 +914,7 @@
       applyState(msg);
     } else if (msg.type === 'match_end') {
       phase = 'ended';
+      if (waitingInLobby) return;
       const won = msg.winner === myTeam;
       const draw = msg.score.blue === msg.score.red;
       endResultEl.textContent = draw ? 'BERABERE' : (won ? 'TAKIMIN KAZANDI! 🏆' : 'TAKIMIN KAYBETTİ 😅');
@@ -908,28 +931,46 @@
     rosterBlueEl.innerHTML = '';
     rosterRedEl.innerHTML = '';
     let readyCount = 0;
+    const humanPlayers = msg.players.filter((p) => !p.isAI);
+    const me = humanPlayers.find((p) => p.id === myId);
+    if (me) {
+      $('profileName').textContent = me.name;
+      $('profileAvatar').textContent = Array.from(me.name)[0].toLocaleUpperCase('tr');
+      $('profileRole').textContent = me.isHost ? 'Lobi yöneticisi · Sen' : 'Takım oyuncusu · Sen';
+    }
+    $('lobbyPlayerCount').textContent = `${humanPlayers.length} oyuncu`;
     msg.players.forEach((p) => {
       if (p.id === myId) { myTeam = p.team; myPosition = p.position; myReady = !!p.ready; }
-      if (p.ready) readyCount++;
+      if (p.ready && !p.isAI) readyCount++;
       const li = document.createElement('li');
       if (p.id === myId) li.classList.add('me');
       const label = document.createElement('span');
-      label.textContent = p.name + ' ';
+      label.className = 'player-info';
+      const name = document.createElement('span');
+      name.className = 'player-name';
+      name.textContent = p.name;
+      label.appendChild(name);
+      if (p.id === myId) {
+        const self = document.createElement('span');
+        self.className = 'self-badge';
+        self.textContent = 'SEN';
+        name.appendChild(self);
+      }
       const posSpan = document.createElement('span');
       posSpan.className = 'pos';
-      posSpan.textContent = p.position;
+      posSpan.textContent = `${p.position} · ${positionsData?.[p.position]?.label || 'Oyuncu'}`;
       label.appendChild(posSpan);
       if (p.isHost) {
         const badge = document.createElement('span');
         badge.className = 'hostbadge';
-        badge.textContent = '👑';
-        label.appendChild(badge);
+        badge.textContent = 'YÖNETİCİ';
+        name.appendChild(badge);
       }
       li.appendChild(label);
 
       const readyState = document.createElement('span');
       readyState.className = 'readyState ' + (p.ready ? 'ready' : 'waiting');
-      readyState.textContent = p.ready ? '✓ HAZIR' : 'Bekleniyor…';
+      readyState.textContent = p.isAI ? 'OTOMATİK' : p.inMatch ? 'SAHADA' : p.ready ? '✓ HAZIR' : 'LOBİDE';
       li.appendChild(readyState);
 
       if (isHost && p.id !== myId && msg.phase === 'lobby') {
@@ -945,27 +986,46 @@
       (p.team === 'blue' ? rosterBlueEl : rosterRedEl).appendChild(li);
     });
 
+    for (const team of ['blue', 'red']) {
+      const players = msg.players.filter((p) => p.team === team);
+      $(team + 'RosterCount').textContent = players.length;
+      $(team + 'ReadySummary').textContent = msg.phase === 'playing'
+        ? `${players.filter((p) => p.inMatch).length} oyuncu sahada`
+        : `${players.filter((p) => p.ready).length} / ${players.length} oyuncu hazır`;
+      if (!players.length) {
+        const empty = document.createElement('li');
+        empty.className = 'empty-roster';
+        empty.textContent = 'Henüz oyuncu yok. Takımına ilk katılan sen ol.';
+        (team === 'blue' ? rosterBlueEl : rosterRedEl).appendChild(empty);
+      }
+    }
+
     myTeamSelect.value = myTeam || 'blue';
     populatePositionSelect(myPosSelect, myPosition);
 
     const minPlayers = msg.minPlayers || 1;
-    const total = msg.players.length;
+    const total = humanPlayers.length;
     const inCountdown = msg.phase === 'countdown';
+    const matchInProgress = msg.phase === 'playing' || msg.phase === 'ended';
 
     myTeamSelect.disabled = inCountdown;
     myPosSelect.disabled = inCountdown;
-    readyBtn.disabled = inCountdown;
+    readyBtn.disabled = inCountdown || matchInProgress;
 
-    readyBtn.textContent = myReady ? '✓ HAZIR' : 'HAZIR';
+    readyBtn.textContent = matchInProgress ? 'MAÇ BEKLENİYOR' : myReady ? '✓ HAZIR · İPTAL ET' : 'HAZIRIM';
     readyBtn.classList.toggle('isReady', myReady);
 
-    if (inCountdown) {
+    $('readyMeterFill').style.width = `${total ? readyCount / total * 100 : 0}%`;
+    if (matchInProgress) {
+      lobbyStatus.textContent = 'Lobidesin. Devam eden maç bitince yeni maça hazırlanabilirsin.';
+      readyProgress.textContent = 'Takımını ve mevkini şimdiden seçebilirsin.';
+    } else if (inCountdown) {
       lobbyStatus.textContent = 'Herkes hazır! Maç başlıyor…';
       readyProgress.textContent = '';
     } else {
       lobbyStatus.textContent = total < minPlayers
         ? `Maçın başlaması için en az ${minPlayers} oyuncu gerekiyor (şu an ${total}).`
-        : 'Herkes hazır olunca maç 5 saniyelik geri sayımla otomatik başlar.';
+        : 'Herkes hazır olunca maç kısa bir geri sayımla otomatik başlar.';
       readyProgress.textContent = `${readyCount}/${total} oyuncu hazır`;
     }
   }
@@ -973,6 +1033,7 @@
   function applyState(msg) {
     scoreBlueEl.textContent = msg.score.blue;
     scoreRedEl.textContent = msg.score.red;
+    if (!matchMenu.hidden) $('menuScore').textContent = `${msg.score.blue} : ${msg.score.red}`;
     myFlagBlue.hidden = myTeam !== 'blue';
     myFlagRed.hidden = myTeam !== 'red';
     if (positionsData && positionsData[myPosition]) {
@@ -1193,11 +1254,48 @@
   // ---------- Input ----------
   const keys = Object.create(null);
   const gameKeys = new Set(['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'KeyW', 'KeyA', 'KeyS', 'KeyD']);
+  function clearGameInput() {
+    for (const code of gameKeys) keys[code] = false;
+    if (ws?.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ type: 'input', x: 0, z: 0, sprint: false }));
+    }
+  }
+  function setMatchMenu(open) {
+    if (open && (phase !== 'playing' || waitingInLobby || !joined)) return;
+    const wasOpen = !matchMenu.hidden;
+    matchMenu.hidden = !open;
+    hud.inert = open;
+    renderer.domElement.inert = open;
+    if (open || wasOpen) clearGameInput();
+    if (open) {
+      $('menuScore').textContent = `${scoreBlueEl.textContent} : ${scoreRedEl.textContent}`;
+      resumeBtn.focus({ preventScroll: true });
+    } else if (wasOpen) {
+      renderer.domElement.focus({ preventScroll: true });
+    }
+  }
+  $('menuBtn').addEventListener('click', () => setMatchMenu(true));
+  resumeBtn.addEventListener('click', () => setMatchMenu(false));
+  leaveMatchBtn.addEventListener('click', () => {
+    if (ws?.readyState !== WebSocket.OPEN) return;
+    clearGameInput();
+    ws.send(JSON.stringify({ type: 'leave_match' }));
+  });
   function isTypingTarget(target) {
     return target instanceof HTMLElement && (target.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName));
   }
   window.addEventListener('keydown', (e) => {
-    if (phase !== 'playing' || isTypingTarget(e.target) || !gameKeys.has(e.code)) return;
+    if (e.code === 'Escape' && phase === 'playing' && !waitingInLobby && joined) {
+      e.preventDefault();
+      if (!e.repeat) setMatchMenu(matchMenu.hidden);
+      return;
+    }
+    if (!matchMenu.hidden && e.code === 'Tab') {
+      e.preventDefault();
+      (document.activeElement === resumeBtn ? leaveMatchBtn : resumeBtn).focus();
+      return;
+    }
+    if (phase !== 'playing' || waitingInLobby || !matchMenu.hidden || !joined || isTypingTarget(e.target) || !gameKeys.has(e.code)) return;
     e.preventDefault();
     if (!keys[e.code] && ['KeyA', 'KeyS', 'KeyD'].includes(e.code) && ws?.readyState === WebSocket.OPEN) {
       ws.send(JSON.stringify({ type: 'action', key: e.code.slice(-1) }));
@@ -1205,10 +1303,11 @@
     keys[e.code] = true;
   });
   window.addEventListener('keyup', (e) => { if (gameKeys.has(e.code)) keys[e.code] = false; });
-  window.addEventListener('blur', () => { for (const code of gameKeys) keys[code] = false; });
+  window.addEventListener('blur', clearGameInput);
 
   let lastInputSend = 0;
   function sendInput(now) {
+    if (waitingInLobby || !matchMenu.hidden || !joined) return;
     if (!ws || ws.readyState !== WebSocket.OPEN) return;
     if (now - lastInputSend < 50) return;
     lastInputSend = now;
@@ -1248,7 +1347,7 @@
     const dt = Math.min(clock.getDelta(), 0.05);
     const now = performance.now();
 
-    if (phase === 'playing') {
+    if (phase === 'playing' && !waitingInLobby) {
       sendInput(now);
       // wall-clock (Date.now()), not performance.now() — comparable against
       // the server's Date.now()-based serverMatchStartedAt so every client's
