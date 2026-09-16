@@ -54,22 +54,22 @@
     <div class="overlay" id="lobbyOverlay" hidden>
       <div class="lobby-shell">
         <header class="lobby-header">
-          <div><span class="eyebrow">OF?S FUTBOLU / 5'E 5</span><h1>Sahada yerini al.</h1><p>Bo? bir yere t?kla, tak?m?na kat?l ve haz?r ol.</p></div>
-          <div class="invite-area"><button class="secondary" id="copyInviteLinkBtn" type="button">? Arkada??n? davet et</button><button class="secondary" id="lobbySettingsBtn" type="button" data-open-settings aria-haspopup="dialog">Ayarlar</button><p id="inviteLinkStatus" role="status"></p></div>
+          <div><span class="eyebrow">OFİS FUTBOLU / 5'E 5</span><h1>Sahada yerini al.</h1><p>Boş bir yere tıkla, takımına katıl ve hazır ol.</p></div>
+          <div class="invite-area"><button class="secondary" id="copyInviteLinkBtn" type="button">📣 Arkadaşını davet et</button><div class="lobby-music-control"><label for="lobbyMusicQuickVolume">🎵 Müzik</label><input id="lobbyMusicQuickVolume" type="range" min="0" max="1" step="0.01" value="0.5" aria-label="Lobi müziği seviyesi" /></div><button class="secondary" id="lobbySettingsBtn" type="button" data-open-settings aria-haspopup="dialog">Ayarlar</button><p id="inviteLinkStatus" role="status"></p></div>
         </header>
-        <section class="pitch-panel" aria-label="Tak?m ve oyuncu se?imi">
+        <section class="pitch-panel" aria-label="Takım ve oyuncu seçimi">
           <div class="pitch-header">
-            <div class="pitch-team">MAV? TAKIM <span class="team-count" id="blueRosterCount">0 / 5</span></div>
+            <div class="pitch-team">MAVİ TAKIM <span class="team-count" id="blueRosterCount">0 / 5</span></div>
             <span id="lobbyPlayerCount">0 oyuncu</span>
             <div class="pitch-team red"><span class="team-count" id="redRosterCount">0 / 5</span> KIRMIZI TAKIM</div>
           </div>
           <div class="pitch-scroll"><div id="lobbyPitch"><div id="pitchSlots" role="group" aria-label="Sahadaki oyuncu yerleri"></div></div></div>
-          <div class="pitch-caption"><p>Her yar?da kaleci dahil 5 oyuncu.</p><p>? Bo? yer &nbsp; ? &nbsp; Sar? halka sensin &nbsp; ? &nbsp; ? Haz?r</p></div>
+          <div class="pitch-caption"><p>Her yarıda kaleci dahil 5 oyuncu.</p><p>⬤ Boş yer &nbsp; • &nbsp; Sarı halka sensin &nbsp; • &nbsp; ✔ Hazır</p></div>
         </section>
         <p id="slotStatus" role="status" aria-live="polite"></p>
         <footer class="lobby-footer">
-          <div class="lobby-player"><div class="profile-avatar" id="profileAvatar" aria-hidden="true">O</div><div><strong id="profileName">Oyuncu</strong><span id="profileRole">Sahada bir yer se?</span></div></div>
-          <div class="ready-info"><p id="lobbyStatus" role="status">Tak?m?na kat?lmak i?in bo? bir yere t?kla.</p><p id="readyProgress"></p><div class="ready-meter" aria-hidden="true"><span id="readyMeterFill"></span></div></div>
+          <div class="lobby-player"><div class="profile-avatar" id="profileAvatar" aria-hidden="true">O</div><div><strong id="profileName">Oyuncu</strong><span id="profileRole">Sahada bir yer seç</span></div></div>
+          <div class="ready-info"><p id="lobbyStatus" role="status">Takımına katılmak için boş bir yere tıkla.</p><p id="readyProgress"></p><div class="ready-meter" aria-hidden="true"><span id="readyMeterFill"></span></div></div>
           <button class="primary" id="readyBtn" type="button" disabled>HAZIRIM</button>
         </footer>
       </div>
