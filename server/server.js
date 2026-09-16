@@ -759,6 +759,12 @@ function handleJoinLanding(req, res) {
 const httpServer = http.createServer((req, res) => {
   const path = (req.url || '').split('?')[0];
 
+  if (req.method === 'GET' && path === '/') {
+    res.writeHead(302, { Location: '/game.html' });
+    res.end();
+    return;
+  }
+
   if (req.method === 'GET' && path === '/join') {
     handleJoinLanding(req, res);
     return;

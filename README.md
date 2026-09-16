@@ -66,7 +66,7 @@ Local:
   ws://localhost:3000
 
 LAN:
-  ws://10.17.12.93:3000
+  ws://<sunucunun-lan-ip-adresi>:3000
 
 Port: 3000
 
@@ -75,10 +75,9 @@ Waiting for players...
 ```
 
 Sunucu `0.0.0.0` üzerinde dinler (sadece `localhost` değil), yani aynı ağdaki başka
-bilgisayarlar da bağlanabilir. Uzantıdaki sunucu adresi alanı varsayılan olarak
-`ws://10.17.12.93:3000` ile doldurulur; farklı bir makinede farklı bir IP kullanılıyorsa
-bu alanı elle değiştirebilirsin — bir kez başarıyla bağlandığında o adres hatırlanır ve
-bir sonraki açılışta otomatik doldurulur.
+bilgisayarlar da bağlanabilir. LAN'dan bağlanacak kullanıcılar, sunucu açılırken `LAN:`
+altında yazdırılan adresi kullanmalıdır. Bir kez başarıyla bağlandığında bu adres
+hatırlanır ve bir sonraki açılışta otomatik doldurulur.
 
 ## LAN Multiplayer Setup
 
@@ -122,7 +121,7 @@ TCP    0.0.0.0:3000           0.0.0.0:0              LISTENING       <PID>
 Ofis ağındaki başka bir Windows bilgisayardan (aynı sunucu IP'sini kullanarak):
 
 ```powershell
-Test-NetConnection 10.17.12.93 -Port 3000
+Test-NetConnection <sunucunun-lan-ip-adresi> -Port 3000
 ```
 
 Beklenen sonuç:
@@ -143,7 +142,7 @@ teyit edilmeli.
 ekranında sunucu adresi olarak şunu kullan (uzantı bunu zaten varsayılan olarak dolduracak):
 
 ```
-ws://10.17.12.93:3000
+ws://<sunucunun-lan-ip-adresi>:3000
 ```
 
 İsim gir, takım ve mevki seç, **Lobiye Katıl**'a bas. Lobiyi ilk açan kişi (host, 👑
@@ -175,6 +174,5 @@ değildir; elle bağlanan uzantı kullanıcılarıyla aynı sunucu ve lobi akı�
   görür.
 - Uzantı, harici bir CDN'den değil yalnızca yerel `lib/three.min.js` dosyasından Three.js
   yükler (Manifest V3 uyumluluğu ve uzak kod çalıştırmama ilkesi gereği).
-- Sunucu IP'si (`10.17.12.93`) koda gömülü değildir — sadece istemcinin varsayılan alan
-  değeri olarak kullanılır ve `os.networkInterfaces()` ile otomatik tespit edilir; DHCP IP
-  değişse bile sunucu başlatıldığında güncel adresi banner'da gösterir.
+- Sunucu IP'si koda gömülü değildir. `os.networkInterfaces()` ile otomatik tespit edilir;
+  DHCP IP değişse bile sunucu başlatıldığında güncel adresi banner'da gösterir.
