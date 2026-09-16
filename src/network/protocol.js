@@ -1,0 +1,11 @@
+// Exact existing wire names. Both client and server import this contract.
+export const CLIENT = Object.freeze({
+  JOIN: 'join', SELECT_SLOT: 'select_slot', READY: 'ready',
+  INPUT: 'input', ACTION: 'action', LEAVE_MATCH: 'leave_match',
+});
+export const SERVER = Object.freeze({
+  LOBBY: 'lobby', WELCOME: 'welcome', SLOT_ERROR: 'slot_error',
+  LOBBY_RETURNED: 'lobby_returned', COUNTDOWN_START: 'countdownStart',
+  COUNTDOWN_CANCELLED: 'countdownCancelled', MATCH_START: 'matchStart',
+  STATE: 'state', ACTION_RESULT: 'actionResult', MATCH_END: 'match_end',
+});

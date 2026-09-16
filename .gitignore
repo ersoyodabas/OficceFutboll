@@ -1,3 +1,15 @@
 node_modules/
-server/.env
+.env
+.env.*
+!.env.example
 *.log
+logs/
+.tmp/
+*.tmp
+*.swp
+*~
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+test-results/
