@@ -1,11 +1,5 @@
-// Shared by the Chrome client, invited browser clients and Node server.
-// X is pitch width, Z is length, Y is vertical. Blue defends +Z.
-(function (root, factory) {
-  const field = factory();
-  if (typeof module === 'object' && module.exports) module.exports = field;
-  else root.OfficeField = field;
-})(globalThis, function () {
-  return Object.freeze({
+// Shared geometry only. Server gameplay tuning lives in server/core/config.js.
+export const FIELD = Object.freeze({
     HALF_W: 24,
     HALF_L: 38,
     // Scaled from a regulation 7.32 m × 2.44 m goal on a 68 m-wide pitch.
@@ -29,4 +23,4 @@
       Object.freeze({ position: 'FRV', x: 0, z: 7 }),
     ]),
   });
-});
+export const { HALF_W, HALF_L, GOAL_HALF_W, GOAL_HEIGHT, BALL_R, PLAYER_R } = FIELD;

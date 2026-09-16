@@ -1,0 +1,35 @@
+# Replace every placeholder below with a real GitHub username before enabling
+# required code-owner review. GitHub expects usernames in the @username form.
+
+# Core / Engine
+/src/core/               @ENGINE_OWNER
+/src/engine/             @ENGINE_OWNER
+/shared/                 @ENGINE_OWNER
+
+# Gameplay
+/src/gameplay/           @GAMEPLAY_OWNER
+/server/gameplay/        @GAMEPLAY_OWNER
+
+# World / Graphics
+/src/world/              @WORLD_OWNER
+/assets/textures/        @WORLD_OWNER
+/assets/models/          @WORLD_OWNER
+
+# Lobby / Network
+/src/lobby/              @NETWORK_OWNER
+/src/network/            @NETWORK_OWNER
+/server/lobby/           @NETWORK_OWNER
+/server/network/         @NETWORK_OWNER
+
+# UI / Audio
+/src/ui/                 @UI_AUDIO_OWNER
+/src/audio/              @UI_AUDIO_OWNER
+/assets/audio/           @UI_AUDIO_OWNER
+
+# Shared/high-risk files
+/manifest.json           @ENGINE_OWNER
+/game.html               @ENGINE_OWNER
+/src/core/game.js        @ENGINE_OWNER
+/src/core/config.js      @ENGINE_OWNER
+/src/network/protocol.js @NETWORK_OWNER
+/server/core/server.js   @ENGINE_OWNER

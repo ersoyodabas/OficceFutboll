@@ -1,7 +1,5 @@
-// A dedicated, lightweight 3D lobby scene. The same footballer models are used in-match.
-(function () {
-  'use strict';
-  globalThis.OfficeLobby = class {
+import { THREE } from '../engine/three.js';
+  export class LobbyView {
     constructor({ container, slotsElement, field, grassMaterial, drawMarkings, createFootballer, onSelect }) {
       this.container = container;
       this.scene = new THREE.Scene();
@@ -166,5 +164,4 @@
       }
       this.renderer.render(this.scene, this.camera);
     }
-  };
-})();
+  }

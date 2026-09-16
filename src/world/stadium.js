@@ -1,9 +1,5 @@
-// Static, low-draw-call stadium for the existing Three.js client.
-(function () {
-  'use strict';
-
-  function create(scene, field) {
-    const THREE = globalThis.THREE;
+import { THREE } from '../engine/three.js';
+  export function createStadium({ scene, field }) {
     const stadium = new THREE.Group();
     stadium.name = 'Stadium';
     scene.add(stadium);
@@ -172,6 +168,3 @@
     }
     return stadium;
   }
-
-  globalThis.OfficeStadium = { create };
-})();

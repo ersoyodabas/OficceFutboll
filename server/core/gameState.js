@@ -1,0 +1,1 @@
+export function createGameState() { return { clients: new Map(), hostId: null, phase: 'lobby', countdownRemaining: 0, countdownStartAt: 0, matchStartedAt: 0, matchEndsAt: 0, goalPauseRemaining: 0, endPauseRemaining: 0, pendingServe: 'blue', score: { blue: 0, red: 0 }, matchActive: false, world: null, ballBody: null, ballOwnerId: null, looseBallUntil: 0 }; }
