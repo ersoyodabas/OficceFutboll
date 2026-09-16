@@ -3,6 +3,7 @@ import { createGameState } from './gameState.js';
 import { createBroadcast } from '../network/broadcast.js';
 import { createLobbyManager } from '../lobby/lobbyManager.js';
 import { createReadyManager } from '../lobby/readyManager.js';
+import { createChatManager } from '../lobby/chatManager.js';
 import { createInvitationHandler } from '../lobby/invitationManager.js';
 import { buildWorld, createBallPhysics } from '../gameplay/ballPhysics.js';
 import { createPlayerManager } from '../gameplay/playerManager.js';
@@ -19,6 +20,7 @@ export function createServer() {
   const transport = createBroadcast({ state });
   const lobby = createLobbyManager({ state, ...transport });
   const ready = createReadyManager({ state, ...transport, ...lobby });
+  const chat = createChatManager({ ...transport });
   const players = createPlayerManager({ state });
   const physics = createBallPhysics({ state });
   const actions = createActions({ state, ...transport });
@@ -27,7 +29,7 @@ export function createServer() {
   const invitation = createInvitationHandler({ state, getLanIPv4Addresses,
     getPort: () => httpServer.address()?.port || PORT });
   const httpServer = createHttpServer(invitation);
-  const connection = createConnectionHandler({ state, ...transport, ...lobby, ready, actions, match, lobby });
+  const connection = createConnectionHandler({ state, ...transport, ...lobby, ready, actions, match, lobby, chat });
   const wss = createWebSocketServer({ httpServer, ...connection });
   let interval;
 

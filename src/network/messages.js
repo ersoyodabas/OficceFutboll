@@ -25,6 +25,10 @@ function handleMessage(msg) {
       ball.reset();
       if (state.phase === 'lobby') ui.hideCountdownOverlay();
     }
+    // Mid-match LOBBY broadcasts (e.g. right after a goal) also carry the
+    // score; only resync it here outside of active play so a goal isn't
+    // masked before the STATE message can detect the increase.
+    if (msg.phase !== 'playing') state.lastScore = { ...msg.score };
   } else if (msg.type === SERVER.SLOT_ERROR) {
     ui.dom.slotStatus.textContent = msg.message;
   } else if (msg.type === SERVER.WELCOME) {
@@ -56,6 +60,8 @@ function handleMessage(msg) {
     state.phase = 'playing';
     ui.showOverlay(null);
     audio.setLobbyActive(false);
+    audio.playSfx('whistle');
+    state.lastScore = { blue: 0, red: 0 };
     ui.dom.hud.hidden = false; ui.dom.hint.hidden = false;
     canvas.focus({ preventScroll: true });
   } else if (msg.type === SERVER.STATE) {
@@ -80,6 +86,10 @@ function handleMessage(msg) {
   }
 }
 
-function applyState(msg) { ui.applyStateHUD(msg); players.applySnapshot(msg.players); ball.applySnapshot(msg.ball); }
+function applyState(msg) {
+  if (msg.score && (msg.score.blue > state.lastScore.blue || msg.score.red > state.lastScore.red)) audio.playSfx('goal');
+  if (msg.score) state.lastScore = { ...msg.score };
+  ui.applyStateHUD(msg); players.applySnapshot(msg.players); ball.applySnapshot(msg.ball);
+}
 return { handleMessage };
 }
