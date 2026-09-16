@@ -20,5 +20,13 @@
     PENALTY_SPOT_DISTANCE: 8,
     CENTER_CIRCLE_R: 6.4,
     CORNER_ARC_R: 0.7,
+    // Five selectable places per half, including one goalkeeper. Blue defends +Z.
+    LOBBY_SLOTS: Object.freeze([
+      Object.freeze({ position: 'KL', x: 0, z: 33 }),
+      Object.freeze({ position: 'STP', x: 0, z: 23 }),
+      Object.freeze({ position: 'SLK', x: -13, z: 15 }),
+      Object.freeze({ position: 'SGK', x: 13, z: 15 }),
+      Object.freeze({ position: 'FRV', x: 0, z: 7 }),
+    ]),
   });
 });

@@ -123,6 +123,7 @@ function broadcast(msg) {
 function rosterPayload() {
   return Array.from(clients.values()).map((c) => ({
     id: c.id, name: c.name, team: c.team, position: c.position, isHost: c.id === hostId, ready: !!c.ready,
+    inMatch: !!c.inMatch, isAI: !!c.isAI, slot: c.slot ?? null,
   }));
 }
 
@@ -199,6 +200,8 @@ function buildWorld() {
 }
 
 function spawnFor(c, sameSpotIndex) {
+  const slot = FIELD.LOBBY_SLOTS[c.slot];
+  if (slot) return { x: slot.x, z: slot.z * (c.team === 'blue' ? 1 : -1) };
   const pos = POSITIONS[positionFor(c.position)];
   const mirror = c.team === 'blue' ? 1 : -1;
   const jitter = (sameSpotIndex - 0) * 0.6 * (sameSpotIndex % 2 === 0 ? 1 : -1);
@@ -267,8 +270,11 @@ function startMatch() {
     standingActive: 0,
     lastAction: null,
   });
-  clients.set('ai_keeper_blue', createAIKeeper('blue'));
-  clients.set('ai_keeper_red', createAIKeeper('red'));
+  for (const team of ['blue', 'red']) {
+    if (!Array.from(clients.values()).some((c) => c.inMatch && c.team === team && c.slot === 0)) {
+      clients.set('ai_keeper_' + team, createAIKeeper(team));
+    }
+  }
 
   phase = 'playing';
   matchActive = true;
@@ -312,6 +318,10 @@ function abortMatchToLobby() {
   world = null;
   ballBody = null;
   ballOwnerId = null;
+  clients.delete('ai_keeper_blue');
+  clients.delete('ai_keeper_red');
+  score = { blue: 0, red: 0 };
+  if (!clients.has(hostId)) hostId = clients.keys().next().value || null;
   for (const c of clients.values()) { c.inMatch = false; c.ready = false; }
   phase = 'lobby';
   broadcastLobby();
@@ -330,7 +340,7 @@ function backToLobby() {
 // ---------------------------------------------------------------------------
 function areAllPlayersReady() {
   if (clients.size === 0) return false;
-  for (const c of clients.values()) if (!c.ready) return false;
+  for (const c of clients.values()) if (!c.ready || !Number.isInteger(c.slot)) return false;
   return true;
 }
 
@@ -759,6 +769,7 @@ const httpServer = http.createServer((req, res) => {
     '/game.js': ['game.js', 'text/javascript; charset=utf-8'],
     '/field.js': ['field.js', 'text/javascript; charset=utf-8'],
     '/stadium.js': ['stadium.js', 'text/javascript; charset=utf-8'],
+    '/lobby.js': ['lobby.js', 'text/javascript; charset=utf-8'],
     '/lib/three.min.js': ['lib/three.min.js', 'text/javascript; charset=utf-8'],
     '/textures/grass.jpg': ['textures/grass.jpg', 'image/jpeg'],
     '/assets/textures/pitch/grass_diffuse.png': ['assets/textures/pitch/grass_diffuse.png', 'image/png'],
@@ -781,7 +792,7 @@ wss.on('connection', (ws) => {
   console.log('[SERVER] Connection opened');
   const id = crypto.randomUUID();
   const client = {
-    id, ws, name: 'Oyuncu', team: null, position: DEFAULT_POSITION, ready: false,
+    id, ws, name: 'Oyuncu', team: null, slot: null, position: DEFAULT_POSITION, ready: false,
     inMatch: false, pos: { x: 0, z: 0 }, vel: { x: 0, z: 0 },
     input: { x: 0, z: 0, sprint: false },
     facing: { x: 0, z: 1 }, cooldowns: { A: 0, S: 0, D: 0 },
@@ -799,8 +810,7 @@ wss.on('connection', (ws) => {
     if (msg.type === 'join' && !joined) {
       console.log('[SERVER] Join request received', { name: msg.name, team: msg.team, position: msg.position });
       client.name = String(msg.name || 'Oyuncu').slice(0, 20).trim() || 'Oyuncu';
-      client.team = msg.team === 'red' ? 'red' : 'blue';
-      client.position = positionFor(msg.position);
+      // Joining only enters the lobby; a place must be explicitly selected.
       clients.set(id, client);
       joined = true;
       console.log('[SERVER] Player joined:', client.name, 'Players online:', clients.size);
@@ -812,26 +822,47 @@ wss.on('connection', (ws) => {
       cancelCountdown();
       broadcastLobby();
       console.log('[SERVER] Broadcasting lobby state');
-    } else if (msg.type === 'update_self' && joined) {
-      if (phase !== 'lobby') return;
-      if (msg.team === 'blue' || msg.team === 'red') client.team = msg.team;
-      if (msg.position) client.position = positionFor(msg.position);
-      client.ready = false; // team/position changed — stale readiness doesn't carry over
-      broadcastLobby();
-    } else if (msg.type === 'set_team' && joined) {
-      if (id !== hostId || phase !== 'lobby') return;
-      const target = clients.get(msg.playerId);
-      if (target && (msg.team === 'blue' || msg.team === 'red')) {
-        target.team = msg.team;
-        target.ready = false;
-        broadcastLobby();
+    } else if (msg.type === 'leave_match' && joined) {
+      if (phase !== 'playing') return;
+      client.inMatch = false;
+      client.ready = false;
+      client.input = { x: 0, z: 0, sprint: false };
+      client.vel = { x: 0, z: 0 };
+      client.slideRemaining = 0;
+      client.recoveryRemaining = 0;
+      client.standingActive = 0;
+      if (ballOwnerId === id) releaseBall();
+      send(ws, { type: 'lobby_returned' });
+      if (!Array.from(clients.values()).some((c) => c.inMatch && !c.isAI)) abortMatchToLobby();
+      else broadcastLobby();
+    } else if (msg.type === 'select_slot' && joined) {
+      if (phase === 'countdown' || client.inMatch) return;
+      if (!['blue', 'red'].includes(msg.team) || !Number.isInteger(msg.slot) || !FIELD.LOBBY_SLOTS[msg.slot]) {
+        send(ws, { type: 'slot_error', message: 'Sahadaki boş yerlerden birini seç.' });
+        return;
       }
+      const occupied = Array.from(clients.values()).some((c) => !c.isAI && c.id !== id && c.team === msg.team && c.slot === msg.slot);
+      if (occupied) {
+        send(ws, { type: 'slot_error', message: 'Bu yeri başka bir oyuncu seçti. Boş bir yere tıkla.' });
+        return;
+      }
+      if (client.team === msg.team && client.slot === msg.slot) return;
+      client.team = msg.team;
+      client.slot = msg.slot;
+      client.position = FIELD.LOBBY_SLOTS[msg.slot].position;
+      client.ready = false;
+      broadcastLobby();
     } else if (msg.type === 'ready' && joined) {
       if (phase !== 'lobby') return; // can't change readiness once counting down or in-match
+      if (!Number.isInteger(client.slot)) {
+        send(ws, { type: 'slot_error', message: 'Hazır olmadan önce sahada bir yer seç.' });
+        return;
+      }
       client.ready = !!msg.ready;
       broadcastLobby();
       checkAutoStart();
     } else if (msg.type === 'input' && joined) {
+      if (phase !== 'playing' || !client.inMatch) return;
       client.input = {
         x: Math.max(-1, Math.min(1, Number(msg.x) || 0)),
         z: Math.max(-1, Math.min(1, Number(msg.z) || 0)),
@@ -857,8 +888,7 @@ wss.on('connection', (ws) => {
       // countdown can't meaningfully continue either way)
       cancelCountdown();
     } else if (phase === 'playing') {
-      const { blue, red } = teamCounts();
-      if (blue < 1 || red < 1) abortMatchToLobby();
+      if (!Array.from(clients.values()).some((c) => c.inMatch && !c.isAI)) abortMatchToLobby();
     } else if (phase === 'lobby') {
       // someone who wasn't ready leaving might be exactly what was blocking
       // the remaining, already-ready players from starting
@@ -886,21 +916,22 @@ function getLanIPv4Addresses() {
 const HOST = '0.0.0.0'; // listen on all network interfaces, not just localhost
 
 httpServer.listen(PORT, HOST, () => {
+  const listeningPort = httpServer.address().port;
   const lanAddrs = getLanIPv4Addresses();
   console.log('========================================');
   console.log(' OFFICE FUTBOLL SERVER');
   console.log('========================================');
   console.log('Local:');
-  console.log(`  ws://localhost:${PORT}`);
+  console.log(`  ws://localhost:${listeningPort}`);
   console.log('');
   console.log('LAN:');
   if (lanAddrs.length) {
-    lanAddrs.forEach((ip) => console.log(`  ws://${ip}:${PORT}`));
+    lanAddrs.forEach((ip) => console.log(`  ws://${ip}:${listeningPort}`));
   } else {
     console.log('  (LAN arayuzu bulunamadi)');
   }
   console.log('');
-  console.log(`Port: ${PORT}`);
+  console.log(`Port: ${listeningPort}`);
   console.log('');
   console.log('Waiting for players...');
   console.log('========================================');

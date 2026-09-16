@@ -34,6 +34,16 @@ sunucu belirler. Lobi alanlarına yazı yazarken oyun tuşları girişe karışm
 
 Lobide tek oyuncu da **HAZIR** diyerek 5 saniyelik geri sayımı ve maçı başlatabilir.
 
+Maç sırasında **ESC** veya **Menü** düğmesi, ekranın ortasında oyun menüsünü açar.
+**Oyuna devam et** ya da tekrar **ESC** menüyü kapatır. Menü açıkken oyuncunun
+kontrolleri durur; çevrim içi maç devam eder. **Maçtan çık · Lobiye dön** bağlantıyı
+kesmeden oyuncuyu sahadan çıkarır. Diğer oyuncular maçlarına devam eder; çıkan
+oyuncu lobide takımını ve mevkini seçip sonraki maçı bekleyebilir. Son oyuncu da
+çıkarsa maç sıfırlanır ve herkes lobide yeniden hazır olabilir.
+
+Lobide kişisel oyuncu kartı, iki takımın kadroları ve maç hazırlık alanı ayrıdır.
+Kadrolarda mevki, yönetici, kendi oyuncun ve hazır/sahada durumları gösterilir.
+
 Yayın kamerası her karede doğrudan topun çizilen konumuna odaklanır ve top boyunca
 hareket eder. Kaleler, saha ölçeğine göre gerçek 7,32 × 2,44 metre oranındadır.
 

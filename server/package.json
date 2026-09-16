@@ -5,7 +5,8 @@
   "description": "Ofis Futbolu 3D icin LAN lobi/mac sunucusu (WebSocket + cannon-es fizik motoru)",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "test": "node --test"
   },
   "dependencies": {
     "cannon-es": "^0.20.0",

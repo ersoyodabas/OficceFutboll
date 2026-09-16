@@ -54,29 +54,20 @@
   const posLabelEl = $('posLabel');
 
   const connectOverlay = $('connectOverlay');
-  const pickOverlay = $('pickOverlay');
   const lobbyOverlay = $('lobbyOverlay');
   const endOverlay = $('endOverlay');
   const disconnectOverlay = $('disconnectOverlay');
+  const matchMenu = $('matchMenu');
+  const resumeBtn = $('resumeBtn');
+  const leaveMatchBtn = $('leaveMatchBtn');
 
   const serverInput = $('serverInput');
   const nameInput = $('nameInput');
   const connectBtn = $('connectBtn');
   const connStatus = $('connStatus');
 
-  const pickBlueBtn = $('pickBlueBtn');
-  const pickRedBtn = $('pickRedBtn');
-  const countBlueEl = $('countBlue');
-  const countRedEl = $('countRed');
-  const positionSelect = $('positionSelect');
-  const joinBtn = $('joinBtn');
-  const joinStatus = $('joinStatus');
-
   const lobbyStatus = $('lobbyStatus');
-  const rosterBlueEl = $('rosterBlue');
-  const rosterRedEl = $('rosterRed');
-  const myTeamSelect = $('myTeamSelect');
-  const myPosSelect = $('myPosSelect');
+  const slotStatus = $('slotStatus');
   const readyBtn = $('readyBtn');
   const readyProgress = $('readyProgress');
 
@@ -93,7 +84,8 @@
   const countdownSub = $('countdownSub');
 
   function showOverlay(el) {
-    [connectOverlay, pickOverlay, lobbyOverlay, endOverlay, disconnectOverlay].forEach((o) => { o.hidden = (o !== el); });
+    setMatchMenu(false);
+    [connectOverlay, lobbyOverlay, endOverlay, disconnectOverlay].forEach((o) => { o.hidden = (o !== el); });
   }
 
   // Synchronous on purpose: this runs once, at script load, directly against
@@ -484,7 +476,7 @@
     return { pivot, end };
   }
 
-  function createFootballer(team, number, name, isMe) {
+  function createFootballer(team, number, name, isMe, targetScene = scene) {
     const teamHex = TEAM_COLOR[team];
     const jersey = jerseyTextures(teamHex, number);
     const jerseyMat = new THREE.MeshStandardMaterial({ map: jersey.front, roughness: 0.75 });
@@ -599,8 +591,8 @@
     const tag = nameSprite(name || 'Oyuncu');
 
     root.scale.setScalar(PLAYER_VISUAL_SCALE);
-    scene.add(root);
-    scene.add(tag);
+    targetScene.add(root);
+    targetScene.add(tag);
 
     return {
       root, legL, legR, armL, armR, tag, tagOffsetY, highlight,
@@ -651,10 +643,13 @@
   let myTeam = null;
   let myPosition = 'OOS';
   let myReady = false;
+  let mySlot = null;
+  let lobbyView = null;
   let isHost = false;
   let phase = 'idle';
   let positionsData = null;
   let joined = false;
+  let waitingInLobby = false;
   // Match clock is driven by the server's 'matchStart' timestamp (wall-clock,
   // Date.now()-based) rather than each client's own performance.now() at
   // whatever moment its first 'state' packet happens to arrive — see
@@ -663,29 +658,6 @@
   let countdownEndAt = 0;
   let countdownRafId = null;
   const entities = new Map();
-
-  function populatePositionSelect(selectEl, selected) {
-    if (!positionsData) return;
-    const prev = selectEl.value;
-    selectEl.innerHTML = '';
-    Object.keys(positionsData).forEach((code) => {
-      const opt = document.createElement('option');
-      opt.value = code;
-      opt.textContent = `${code} — ${positionsData[code].label}`;
-      selectEl.appendChild(opt);
-    });
-    selectEl.value = selected || prev || 'OOS';
-  }
-
-  let pickedTeam = 'blue';
-  function setPickedTeam(team) {
-    pickedTeam = team;
-    pickBlueBtn.classList.toggle('selected', team === 'blue');
-    pickRedBtn.classList.toggle('selected', team === 'red');
-  }
-  pickBlueBtn.addEventListener('click', () => setPickedTeam('blue'));
-  pickRedBtn.addEventListener('click', () => setPickedTeam('red'));
-  setPickedTeam('blue');
 
   // States: 'connecting' | 'connected' | 'failed' | 'disconnected' | 'idle'
   function updateConnectionStatus(state, detail) {
@@ -775,7 +747,7 @@
         localStorage.setItem(SERVER_STORAGE_KEY, serverUrl);
         localStorage.setItem('officeFootballPlayerName', name);
       } catch (e) {}
-      if (!autoJoinRequested) showOverlay(pickOverlay);
+
     };
     ws.onmessage = (ev) => {
       let msg;
@@ -783,6 +755,10 @@
       handleMessage(msg);
     };
     ws.onclose = () => {
+      phase = 'idle';
+      waitingInLobby = false;
+      hideCountdownOverlay();
+      setMatchMenu(false);
       if (pendingJoin) pendingJoin.reject(new Error('Sunucuyla bağlantı kesildi.'));
       connecting = false;
       connectBtn.disabled = false;
@@ -833,24 +809,20 @@
 
   function handleMessage(msg) {
     if (msg.type === 'lobby') {
-      if (!positionsData && msg.positions) {
-        positionsData = msg.positions;
-        populatePositionSelect(positionSelect, myPosition);
-        populatePositionSelect(myPosSelect, myPosition);
-      }
+      if (msg.positions) positionsData = msg.positions;
       phase = msg.phase;
-      if (!joined) {
-        countBlueEl.textContent = msg.players.filter((p) => p.team === 'blue').length;
-        countRedEl.textContent = msg.players.filter((p) => p.team === 'red').length;
-        return;
-      }
+      isHost = msg.hostId === myId;
+      if (!joined) return;
+      const self = msg.players.find((p) => p.id === myId);
+      if (phase === 'playing' && self && !self.inMatch) waitingInLobby = true;
       if (pendingJoin && msg.players.some((p) => p.id === myId)) {
         console.log('[JOIN] Lobby accepted');
         pendingJoin.resolve();
         pendingJoin = null;
       }
       renderLobby(msg);
-      if (phase === 'lobby' || phase === 'countdown') {
+      if (phase === 'lobby' || phase === 'countdown') waitingInLobby = false;
+      if (phase === 'lobby' || phase === 'countdown' || waitingInLobby) {
         if (lobbyOverlay.hidden) console.log('[JOIN] Switching UI to lobby');
         showOverlay(lobbyOverlay);
         hud.hidden = true; hint.hidden = true;
@@ -859,16 +831,28 @@
         ballNet.serverVel.set(0, 0, 0);
         if (phase === 'lobby') hideCountdownOverlay();
       }
+    } else if (msg.type === 'slot_error') {
+      slotStatus.textContent = msg.message;
     } else if (msg.type === 'welcome') {
       myId = msg.id;
       isHost = msg.isHost;
       joined = true;
       positionsData = msg.positions;
+    } else if (msg.type === 'lobby_returned') {
+      waitingInLobby = true;
+      clearGameInput();
+      showOverlay(lobbyOverlay);
+      hud.hidden = true; hint.hidden = true;
+      clearEntities();
+      hideCountdownOverlay();
+      $('pitchSlots').querySelector('button:not(:disabled)')?.focus({ preventScroll: true });
     } else if (msg.type === 'countdownStart') {
       showCountdownOverlay(msg.startAt, msg.duration);
     } else if (msg.type === 'countdownCancelled') {
       hideCountdownOverlay();
     } else if (msg.type === 'matchStart') {
+      waitingInLobby = false;
+      clearGameInput();
       // Server-authoritative transition: every client switches to the pitch
       // because the server said so, not because each one independently
       // decided its first 'state' packet had arrived.
@@ -879,6 +863,7 @@
       hud.hidden = false; hint.hidden = false;
       renderer.domElement.focus({ preventScroll: true });
     } else if (msg.type === 'state') {
+      if (waitingInLobby || !joined) return;
       if (typeof msg.startedAt === 'number' && msg.startedAt > 0) serverMatchStartedAt = msg.startedAt;
       if (phase !== 'playing') {
         // fallback for a client that connects mid-match and so never saw the
@@ -892,6 +877,7 @@
       applyState(msg);
     } else if (msg.type === 'match_end') {
       phase = 'ended';
+      if (waitingInLobby) return;
       const won = msg.winner === myTeam;
       const draw = msg.score.blue === msg.score.red;
       endResultEl.textContent = draw ? 'BERABERE' : (won ? 'TAKIMIN KAZANDI! 🏆' : 'TAKIMIN KAYBETTİ 😅');
@@ -905,74 +891,59 @@
   function renderLobby(msg) {
     scoreBlueEl.textContent = msg.score.blue;
     scoreRedEl.textContent = msg.score.red;
-    rosterBlueEl.innerHTML = '';
-    rosterRedEl.innerHTML = '';
-    let readyCount = 0;
-    msg.players.forEach((p) => {
-      if (p.id === myId) { myTeam = p.team; myPosition = p.position; myReady = !!p.ready; }
-      if (p.ready) readyCount++;
-      const li = document.createElement('li');
-      if (p.id === myId) li.classList.add('me');
-      const label = document.createElement('span');
-      label.textContent = p.name + ' ';
-      const posSpan = document.createElement('span');
-      posSpan.className = 'pos';
-      posSpan.textContent = p.position;
-      label.appendChild(posSpan);
-      if (p.isHost) {
-        const badge = document.createElement('span');
-        badge.className = 'hostbadge';
-        badge.textContent = '👑';
-        label.appendChild(badge);
-      }
-      li.appendChild(label);
-
-      const readyState = document.createElement('span');
-      readyState.className = 'readyState ' + (p.ready ? 'ready' : 'waiting');
-      readyState.textContent = p.ready ? '✓ HAZIR' : 'Bekleniyor…';
-      li.appendChild(readyState);
-
-      if (isHost && p.id !== myId && msg.phase === 'lobby') {
-        const btn = document.createElement('button');
-        btn.className = 'moveBtn';
-        btn.type = 'button';
-        btn.textContent = p.team === 'blue' ? '→ Kırmızı' : '→ Mavi';
-        btn.addEventListener('click', () => {
-          ws.send(JSON.stringify({ type: 'set_team', playerId: p.id, team: p.team === 'blue' ? 'red' : 'blue' }));
-        });
-        li.appendChild(btn);
-      }
-      (p.team === 'blue' ? rosterBlueEl : rosterRedEl).appendChild(li);
-    });
-
-    myTeamSelect.value = myTeam || 'blue';
-    populatePositionSelect(myPosSelect, myPosition);
-
-    const minPlayers = msg.minPlayers || 1;
-    const total = msg.players.length;
-    const inCountdown = msg.phase === 'countdown';
-
-    myTeamSelect.disabled = inCountdown;
-    myPosSelect.disabled = inCountdown;
-    readyBtn.disabled = inCountdown;
-
-    readyBtn.textContent = myReady ? '✓ HAZIR' : 'HAZIR';
-    readyBtn.classList.toggle('isReady', myReady);
-
-    if (inCountdown) {
-      lobbyStatus.textContent = 'Herkes hazır! Maç başlıyor…';
-      readyProgress.textContent = '';
-    } else {
-      lobbyStatus.textContent = total < minPlayers
-        ? `Maçın başlaması için en az ${minPlayers} oyuncu gerekiyor (şu an ${total}).`
-        : 'Herkes hazır olunca maç 5 saniyelik geri sayımla otomatik başlar.';
-      readyProgress.textContent = `${readyCount}/${total} oyuncu hazır`;
+    const players = msg.players.filter((p) => !p.isAI);
+    const me = players.find((p) => p.id === myId);
+    if (me) {
+      myTeam = me.team;
+      myPosition = me.position;
+      mySlot = me.slot;
+      myReady = !!me.ready;
+      $('profileName').textContent = me.name;
+      $('profileAvatar').textContent = Array.from(me.name)[0].toLocaleUpperCase('tr');
+      $('profileRole').textContent = Number.isInteger(mySlot)
+        ? `${myTeam === 'blue' ? 'Mavi tak?m' : 'K?rm?z? tak?m'}${me.isHost ? ' ? Lobi y?neticisi' : ''}`
+        : 'Sahada bir yer se?';
     }
+    const inCountdown = msg.phase === 'countdown';
+    const matchInProgress = msg.phase === 'playing' || msg.phase === 'ended';
+    const readyCount = players.filter((p) => p.ready).length;
+    const selected = Number.isInteger(mySlot);
+    $('lobbyPlayerCount').textContent = `${players.length} oyuncu`;
+    for (const team of ['blue', 'red']) {
+      $(team + 'RosterCount').textContent = `${players.filter((p) => p.team === team && Number.isInteger(p.slot)).length} / 5`;
+    }
+    if (!lobbyView) {
+      lobbyView = new OfficeLobby({
+        container: $('lobbyPitch'), slotsElement: $('pitchSlots'), field: FIELD,
+        grassMaterial: grassMat, drawMarkings: createPitchMarkings,
+        createFootballer: (team, number, target) => createFootballer(team, number, '', false, target),
+        onSelect: (team, slot) => {
+          if (ws?.readyState !== WebSocket.OPEN) return;
+          slotStatus.textContent = '';
+          ws.send(JSON.stringify({ type: 'select_slot', team, slot }));
+        },
+      });
+    }
+    lobbyView.update(players, myId, inCountdown || !!me?.inMatch);
+    slotStatus.textContent = '';
+    readyBtn.disabled = !selected || inCountdown || matchInProgress;
+    readyBtn.textContent = matchInProgress ? 'MA? BEKLEN?YOR' : myReady ? '? HAZIR ? ?PTAL ET' : 'HAZIRIM';
+    readyBtn.classList.toggle('isReady', myReady);
+    $('readyMeterFill').style.width = `${players.length ? readyCount / players.length * 100 : 0}%`;
+    if (matchInProgress) {
+      lobbyStatus.textContent = 'Devam eden ma? bitince yeni ma?a kat?labilirsin.';
+    } else if (inCountdown) {
+      lobbyStatus.textContent = 'Herkes haz?r! Ma? ba?l?yor?';
+    } else {
+      lobbyStatus.textContent = selected ? 'Yerini ald?n. Haz?rsan sahaya ??kal?m.' : 'Tak?m?na kat?lmak i?in sahada bo? bir yere t?kla.';
+    }
+    readyProgress.textContent = `${readyCount} / ${players.length} oyuncu haz?r`;
   }
 
   function applyState(msg) {
     scoreBlueEl.textContent = msg.score.blue;
     scoreRedEl.textContent = msg.score.red;
+    if (!matchMenu.hidden) $('menuScore').textContent = `${msg.score.blue} : ${msg.score.red}`;
     myFlagBlue.hidden = myTeam !== 'blue';
     myFlagRed.hidden = myTeam !== 'red';
     if (positionsData && positionsData[myPosition]) {
@@ -1000,9 +971,9 @@
     ballNet.lastUpdate = performance.now();
   }
 
-  connectBtn.addEventListener('click', connectToServer);
+  connectBtn.addEventListener('click', joinLobby);
   [serverInput, nameInput].forEach((el) => el.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') connectToServer();
+    if (e.key === 'Enter') joinLobby();
   }));
 
   function ensureWebSocketConnected() {
@@ -1038,19 +1009,18 @@
     console.log('[JOIN] Player:', name);
     if (!name) {
       const error = 'Katılmadan önce adını yaz.';
-      (autoJoinRequested ? connStatus : joinStatus).textContent = error;
+      connStatus.textContent = error;
       return;
     }
     joinInProgress = true;
-    joinBtn.disabled = true;
-    joinBtn.textContent = 'KATILIYOR...';
-    joinStatus.textContent = '';
+    connectBtn.disabled = true;
+    connectBtn.textContent = 'Kat?l?yor?';
     if (autoJoinRequested) updateConnectionStatus('connecting');
     try {
       await ensureWebSocketConnected();
       if (ws.readyState !== WebSocket.OPEN) throw new Error('Sunucuya bağlanılamadı.');
-      myTeam = pickedTeam;
-      myPosition = positionSelect.value || 'OOS';
+      myTeam = null;
+      mySlot = null;
       const accepted = new Promise((resolve, reject) => {
         const timeout = setTimeout(() => reject(new Error('Lobiye katılım zaman aşımına uğradı.')), 10000);
         pendingJoin = {
@@ -1059,17 +1029,17 @@
         };
       });
       console.log('[JOIN] Sending join request');
-      ws.send(JSON.stringify({ type: 'join', name, team: myTeam, position: myPosition }));
+      ws.send(JSON.stringify({ type: 'join', name }));
       await accepted;
     } catch (error) {
       if (pendingJoin) pendingJoin = null;
       joined = false;
       myId = null;
       disposeSocket();
-      const status = autoJoinRequested ? connStatus : joinStatus;
+      const status = connStatus;
       status.textContent = error.message || 'Lobiye katılım başarısız oldu.';
       status.classList.add('error');
-      showOverlay(autoJoinRequested ? connectOverlay : pickOverlay);
+      showOverlay(connectOverlay);
       autoJoinRequested = false;
     } finally {
       joinInProgress = false;
@@ -1078,17 +1048,8 @@
     }
   }
 
-  joinBtn.addEventListener('click', (event) => { event.preventDefault(); joinLobby(); });
   if (autoJoinRequested) joinLobby();
 
-  myTeamSelect.addEventListener('change', () => {
-    myTeam = myTeamSelect.value;
-    ws.send(JSON.stringify({ type: 'update_self', team: myTeam, position: myPosSelect.value }));
-  });
-  myPosSelect.addEventListener('change', () => {
-    myPosition = myPosSelect.value;
-    ws.send(JSON.stringify({ type: 'update_self', team: myTeamSelect.value, position: myPosition }));
-  });
   readyBtn.addEventListener('click', () => {
     if (readyBtn.disabled) return; // countdown already running
     ws.send(JSON.stringify({ type: 'ready', ready: !myReady }));
@@ -1193,11 +1154,48 @@
   // ---------- Input ----------
   const keys = Object.create(null);
   const gameKeys = new Set(['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'KeyW', 'KeyA', 'KeyS', 'KeyD']);
+  function clearGameInput() {
+    for (const code of gameKeys) keys[code] = false;
+    if (ws?.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ type: 'input', x: 0, z: 0, sprint: false }));
+    }
+  }
+  function setMatchMenu(open) {
+    if (open && (phase !== 'playing' || waitingInLobby || !joined)) return;
+    const wasOpen = !matchMenu.hidden;
+    matchMenu.hidden = !open;
+    hud.inert = open;
+    renderer.domElement.inert = open;
+    if (open || wasOpen) clearGameInput();
+    if (open) {
+      $('menuScore').textContent = `${scoreBlueEl.textContent} : ${scoreRedEl.textContent}`;
+      resumeBtn.focus({ preventScroll: true });
+    } else if (wasOpen) {
+      renderer.domElement.focus({ preventScroll: true });
+    }
+  }
+  $('menuBtn').addEventListener('click', () => setMatchMenu(true));
+  resumeBtn.addEventListener('click', () => setMatchMenu(false));
+  leaveMatchBtn.addEventListener('click', () => {
+    if (ws?.readyState !== WebSocket.OPEN) return;
+    clearGameInput();
+    ws.send(JSON.stringify({ type: 'leave_match' }));
+  });
   function isTypingTarget(target) {
     return target instanceof HTMLElement && (target.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName));
   }
   window.addEventListener('keydown', (e) => {
-    if (phase !== 'playing' || isTypingTarget(e.target) || !gameKeys.has(e.code)) return;
+    if (e.code === 'Escape' && phase === 'playing' && !waitingInLobby && joined) {
+      e.preventDefault();
+      if (!e.repeat) setMatchMenu(matchMenu.hidden);
+      return;
+    }
+    if (!matchMenu.hidden && e.code === 'Tab') {
+      e.preventDefault();
+      (document.activeElement === resumeBtn ? leaveMatchBtn : resumeBtn).focus();
+      return;
+    }
+    if (phase !== 'playing' || waitingInLobby || !matchMenu.hidden || !joined || isTypingTarget(e.target) || !gameKeys.has(e.code)) return;
     e.preventDefault();
     if (!keys[e.code] && ['KeyA', 'KeyS', 'KeyD'].includes(e.code) && ws?.readyState === WebSocket.OPEN) {
       ws.send(JSON.stringify({ type: 'action', key: e.code.slice(-1) }));
@@ -1205,10 +1203,11 @@
     keys[e.code] = true;
   });
   window.addEventListener('keyup', (e) => { if (gameKeys.has(e.code)) keys[e.code] = false; });
-  window.addEventListener('blur', () => { for (const code of gameKeys) keys[code] = false; });
+  window.addEventListener('blur', clearGameInput);
 
   let lastInputSend = 0;
   function sendInput(now) {
+    if (waitingInLobby || !matchMenu.hidden || !joined) return;
     if (!ws || ws.readyState !== WebSocket.OPEN) return;
     if (now - lastInputSend < 50) return;
     lastInputSend = now;
@@ -1248,7 +1247,7 @@
     const dt = Math.min(clock.getDelta(), 0.05);
     const now = performance.now();
 
-    if (phase === 'playing') {
+    if (phase === 'playing' && !waitingInLobby) {
       sendInput(now);
       // wall-clock (Date.now()), not performance.now() — comparable against
       // the server's Date.now()-based serverMatchStartedAt so every client's
@@ -1288,8 +1287,12 @@
       }
     }
 
-    updateBroadcastCamera();
-    renderer.render(scene, camera);
+    if (!lobbyOverlay.hidden && lobbyView) {
+      lobbyView.render(now);
+    } else {
+      updateBroadcastCamera();
+      renderer.render(scene, camera);
+    }
     requestAnimationFrame(render);
   }
 
