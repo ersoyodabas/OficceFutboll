@@ -209,10 +209,10 @@
     new THREE.MeshBasicMaterial({ color })
   ));
   const slideGrassParticles = [];
-  const MAX_SLIDE_GRASS_PARTICLES = 260;
+  const MAX_SLIDE_GRASS_PARTICLES = 360;
 
   function emitSlideGrass(entity, dt) {
-    entity.slideGrassAccumulator = (entity.slideGrassAccumulator || 0) + dt * 38;
+    entity.slideGrassAccumulator = (entity.slideGrassAccumulator || 0) + dt * 58;
     let directionX = Number.isFinite(entity.facingX) ? entity.facingX : entity.netVel.x;
     let directionZ = Number.isFinite(entity.facingZ) ? entity.facingZ : entity.netVel.y;
     const directionLength = Math.hypot(directionX, directionZ);
