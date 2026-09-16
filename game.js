@@ -601,7 +601,31 @@
     };
   }
 
-  function animateFootballer(f, speed, kicking, dt) {
+  function animateFootballer(f, speed, kicking, sliding, dt) {
+    const poseBlend = 1 - Math.exp(-dt * 18);
+
+    if (sliding) {
+      // Feet-first slide tackle: right leg reaches the ball while the left
+      // leg opens to the side and folds underneath the body.
+      f.legR.hip.rotation.z = THREE.MathUtils.lerp(f.legR.hip.rotation.z, 0.08, poseBlend);
+      f.legR.thigh.rotation.x = THREE.MathUtils.lerp(f.legR.thigh.rotation.x, -0.08, poseBlend);
+      f.legR.shin.rotation.x = THREE.MathUtils.lerp(f.legR.shin.rotation.x, 0.06, poseBlend);
+
+      f.legL.hip.rotation.z = THREE.MathUtils.lerp(f.legL.hip.rotation.z, -0.5, poseBlend);
+      f.legL.thigh.rotation.x = THREE.MathUtils.lerp(f.legL.thigh.rotation.x, 0.88, poseBlend);
+      f.legL.shin.rotation.x = THREE.MathUtils.lerp(f.legL.shin.rotation.x, 1.55, poseBlend);
+
+      f.armL.shoulder.rotation.z = THREE.MathUtils.lerp(f.armL.shoulder.rotation.z, -0.78, poseBlend);
+      f.armR.shoulder.rotation.z = THREE.MathUtils.lerp(f.armR.shoulder.rotation.z, 0.62, poseBlend);
+      f.armL.upper.rotation.x = THREE.MathUtils.lerp(f.armL.upper.rotation.x, -0.35, poseBlend);
+      f.armR.upper.rotation.x = THREE.MathUtils.lerp(f.armR.upper.rotation.x, 0.3, poseBlend);
+      f.armL.lower.rotation.x = THREE.MathUtils.lerp(f.armL.lower.rotation.x, 0.48, poseBlend);
+      f.armR.lower.rotation.x = THREE.MathUtils.lerp(f.armR.lower.rotation.x, 0.7, poseBlend);
+      f.root.rotation.z = THREE.MathUtils.lerp(f.root.rotation.z, -0.08, poseBlend);
+      f.kickTimer = 0;
+      return;
+    }
+
     const moving = speed > 0.35;
     const swingMax = THREE.MathUtils.clamp(speed / 8, 0, 1) * 0.9;
     if (moving) f.gaitPhase += dt * (5.5 + speed * 0.6);
@@ -615,11 +639,15 @@
     f.legR.thigh.rotation.x = THREE.MathUtils.lerp(f.legR.thigh.rotation.x, targetLegR, 0.35);
     f.legL.shin.rotation.x = THREE.MathUtils.lerp(f.legL.shin.rotation.x, kneeL, 0.35);
     f.legR.shin.rotation.x = THREE.MathUtils.lerp(f.legR.shin.rotation.x, kneeR, 0.35);
+    f.legL.hip.rotation.z = THREE.MathUtils.lerp(f.legL.hip.rotation.z, 0, poseBlend);
+    f.legR.hip.rotation.z = THREE.MathUtils.lerp(f.legR.hip.rotation.z, 0, poseBlend);
 
     f.armL.upper.rotation.x = THREE.MathUtils.lerp(f.armL.upper.rotation.x, -targetLegL * 0.7, 0.35);
     f.armR.upper.rotation.x = THREE.MathUtils.lerp(f.armR.upper.rotation.x, -targetLegR * 0.7, 0.35);
     f.armL.lower.rotation.x = THREE.MathUtils.lerp(f.armL.lower.rotation.x, moving ? 0.3 : 0.15, 0.35);
     f.armR.lower.rotation.x = THREE.MathUtils.lerp(f.armR.lower.rotation.x, moving ? 0.3 : 0.15, 0.35);
+    f.armL.shoulder.rotation.z = THREE.MathUtils.lerp(f.armL.shoulder.rotation.z, 0, poseBlend);
+    f.armR.shoulder.rotation.z = THREE.MathUtils.lerp(f.armR.shoulder.rotation.z, 0, poseBlend);
 
     if (kicking && f.kickTimer <= 0) f.kickTimer = 0.38;
     if (f.kickTimer > 0) {
@@ -1273,7 +1301,7 @@
       for (const [id, e] of entities) {
         e.renderPos.lerp(e.netPos, Math.min(1, dt * 14));
         e.footballer.root.position.set(e.renderPos.x, e.footballer.root.position.y, e.renderPos.z);
-        e.footballer.root.position.y = THREE.MathUtils.damp(e.footballer.root.position.y, e.sliding ? .18 : 0, 10, dt);
+        e.footballer.root.position.y = THREE.MathUtils.damp(e.footballer.root.position.y, e.sliding ? .18 : 0, 12, dt);
         e.footballer.tag.position.set(e.renderPos.x, e.footballer.tagOffsetY, e.renderPos.z);
         const spd = e.netVel.length();
         if (Number.isFinite(e.facingX) && Number.isFinite(e.facingZ)) {
@@ -1282,8 +1310,8 @@
           let diff = Math.atan2(Math.sin(targetAngle - cur), Math.cos(targetAngle - cur));
           e.footballer.root.rotation.y = cur + diff * (1 - Math.exp(-dt * PLAYER_ROTATION_SPEED));
         }
-        e.footballer.root.rotation.x = THREE.MathUtils.damp(e.footballer.root.rotation.x, e.sliding ? -1.0 : 0, 12, dt);
-        animateFootballer(e.footballer, spd, e.kicking, dt);
+        e.footballer.root.rotation.x = THREE.MathUtils.damp(e.footballer.root.rotation.x, e.sliding ? -1.38 : 0, 15, dt);
+        animateFootballer(e.footballer, spd, e.kicking, e.sliding, dt);
       }
     }
 

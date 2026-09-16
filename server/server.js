@@ -38,6 +38,9 @@ const SLIDE_TACKLE_RANGE = 2.7;
 const SLIDE_SPEED = 12.5;
 const SLIDE_DURATION = 0.58;
 const SLIDE_RECOVERY = 0.35;
+const SLIDE_FOOT_OFFSET = 1.05;
+const SLIDE_BALL_CAPTURE_RADIUS = 0.82;
+const SLIDE_BALL_CONTROL_OFFSET = 1.08;
 const ACTION_COOLDOWNS = Object.freeze({ A: 0.42, S: 0.7, D: 0.95 });
 const STANDING_TACKLE_COOLDOWN = 0.85;
 const SLIDE_TACKLE_COOLDOWN = 1.8;
@@ -225,6 +228,7 @@ function placeAllPlayers() {
     c.vel.x = 0;
     c.vel.z = 0;
     c.slideRemaining = 0;
+    c.slideDirection = null;
     c.recoveryRemaining = 0;
   }
 }
@@ -245,6 +249,7 @@ function startMatch() {
     c.facing = { x: 0, z: c.team === 'blue' ? -1 : 1 };
     c.cooldowns = { A: 0, S: 0, D: 0 };
     c.slideRemaining = 0;
+    c.slideDirection = null;
     c.recoveryRemaining = 0;
     c.standingActive = 0;
     c.lastAction = null;
@@ -266,6 +271,7 @@ function startMatch() {
     facing: { x: 0, z: team === 'blue' ? -1 : 1 },
     cooldowns: { A: 0, S: 0, D: 0 },
     slideRemaining: 0,
+    slideDirection: null,
     recoveryRemaining: 0,
     standingActive: 0,
     lastAction: null,
@@ -389,6 +395,26 @@ function allowedRange(c) {
 function applyPlayerControl(c, dt) {
   if (!c.inMatch) return;
 
+  // A slide keeps the direction captured at its starting moment. Input or AI
+  // steering cannot bend the player mid-slide.
+  if (c.slideRemaining > 0) {
+    c.slideRemaining = Math.max(0, c.slideRemaining - dt);
+    const slideDirection = c.slideDirection || c.facing;
+    c.vel.x = slideDirection.x * SLIDE_SPEED;
+    c.vel.z = slideDirection.z * SLIDE_SPEED;
+    c.facing = { x: slideDirection.x, z: slideDirection.z };
+
+    const range = allowedRange(c);
+    c.pos.x = Math.max(range.xMin, Math.min(range.xMax, c.pos.x + c.vel.x * dt));
+    c.pos.z = Math.max(range.zMin, Math.min(range.zMax, c.pos.z + c.vel.z * dt));
+    if (c.slideRemaining === 0) {
+      c.slideDirection = null;
+      c.recoveryRemaining = SLIDE_RECOVERY;
+    }
+    c.standingActive = Math.max(0, c.standingActive - dt);
+    return;
+  }
+
   // AI goalkeeper behavior
   if (c.isAI && c.position === 'KL') {
     const keeperZ = c.team === 'blue' ? HALF_L : -HALF_L;
@@ -425,18 +451,11 @@ function applyPlayerControl(c, dt) {
   const inp = c.input || { x: 0, z: 0, sprint: false };
   const len = Math.hypot(inp.x, inp.z) || 1;
   const nx = inp.x / len, nz = inp.z / len;
-  if (c.slideRemaining > 0) {
-    c.slideRemaining = Math.max(0, c.slideRemaining - dt);
-    c.vel.x = c.facing.x * SLIDE_SPEED;
-    c.vel.z = c.facing.z * SLIDE_SPEED;
-    if (c.slideRemaining === 0) c.recoveryRemaining = SLIDE_RECOVERY;
-  } else {
-    c.recoveryRemaining = Math.max(0, c.recoveryRemaining - dt);
-    const speed = c.recoveryRemaining > 0 ? PLAYER_SPEED * .35 : (inp.sprint ? SPRINT_SPEED : PLAYER_SPEED);
-    c.vel.x = nx * speed;
-    c.vel.z = nz * speed;
-    if (inp.x || inp.z) c.facing = { x: nx, z: nz };
-  }
+  c.recoveryRemaining = Math.max(0, c.recoveryRemaining - dt);
+  const speed = c.recoveryRemaining > 0 ? PLAYER_SPEED * .35 : (inp.sprint ? SPRINT_SPEED : PLAYER_SPEED);
+  c.vel.x = nx * speed;
+  c.vel.z = nz * speed;
+  if (inp.x || inp.z) c.facing = { x: nx, z: nz };
 
   const range = allowedRange(c);
   c.pos.x = Math.max(range.xMin, Math.min(range.xMax, c.pos.x + c.vel.x * dt));
@@ -463,7 +482,48 @@ function applyBallImpulse(x, y, z) {
   ballBody.applyImpulse(new CANNON.Vec3(x * ballBody.mass, y * ballBody.mass, z * ballBody.mass));
 }
 
+function beginSlide(c) {
+  const speed = Math.hypot(c.vel.x, c.vel.z);
+  const input = c.input || { x: 0, z: 0 };
+  const inputLength = Math.hypot(input.x, input.z);
+  let direction;
+
+  if (speed > 0.35) {
+    direction = { x: c.vel.x / speed, z: c.vel.z / speed };
+  } else if (inputLength > 0.01) {
+    direction = { x: input.x / inputLength, z: input.z / inputLength };
+  } else {
+    const facingLength = Math.hypot(c.facing.x, c.facing.z) || 1;
+    direction = { x: c.facing.x / facingLength, z: c.facing.z / facingLength };
+  }
+
+  c.slideDirection = direction;
+  c.facing = { x: direction.x, z: direction.z };
+  c.slideRemaining = SLIDE_DURATION;
+}
+
+function captureBallWithSlide(c) {
+  if (!c.inMatch || c.slideRemaining <= 0 || ballBody.position.y > 1.1) return false;
+
+  const direction = c.slideDirection || c.facing;
+  const footX = c.pos.x + direction.x * SLIDE_FOOT_OFFSET;
+  const footZ = c.pos.z + direction.z * SLIDE_FOOT_OFFSET;
+  const distanceToFoot = Math.hypot(ballBody.position.x - footX, ballBody.position.z - footZ);
+  if (distanceToFoot > SLIDE_BALL_CAPTURE_RADIUS) return false;
+
+  const newlyCaptured = ballOwnerId !== c.id;
+  ballOwnerId = c.id;
+  looseBallUntil = 0;
+  ballBody.position.x = c.pos.x + direction.x * SLIDE_BALL_CONTROL_OFFSET;
+  ballBody.position.y = BALL_R;
+  ballBody.position.z = c.pos.z + direction.z * SLIDE_BALL_CONTROL_OFFSET;
+  ballBody.velocity.set(c.vel.x, 0, c.vel.z);
+  ballBody.angularVelocity.set(0, 0, 0);
+  return newlyCaptured;
+}
+
 function attemptTackle(c, sliding) {
+  if (sliding) return captureBallWithSlide(c);
   if (!ballOwnerId || ballOwnerId === c.id) return false;
   const owner = clients.get(ballOwnerId);
   if (!owner || owner.team === c.team || ballBody.position.y > 1.1) return false;
@@ -471,11 +531,11 @@ function attemptTackle(c, sliding) {
   const dz = ballBody.position.z - c.pos.z;
   const dist = Math.hypot(dx, dz);
   const angle = (dx * c.facing.x + dz * c.facing.z) / (dist || 1);
-  const range = sliding ? SLIDE_TACKLE_RANGE : STANDING_TACKLE_RANGE;
-  if (dist > range || angle < (sliding ? .12 : .35)) return false;
+  const range = STANDING_TACKLE_RANGE;
+  if (dist > range || angle < .35) return false;
   if (Math.hypot(owner.pos.x - c.pos.x, owner.pos.z - c.pos.z) > range + .5) return false;
-  releaseBall(sliding ? 500 : 300);
-  applyBallImpulse(c.facing.x * (sliding ? 8 : 5), sliding ? 1.4 : .25, c.facing.z * (sliding ? 8 : 5));
+  releaseBall(300);
+  applyBallImpulse(c.facing.x * 5, .25, c.facing.z * 5);
   return true;
 }
 
@@ -502,7 +562,7 @@ function performAction(c, key) {
     c.cooldowns.S = now + STANDING_TACKLE_COOLDOWN * 1000;
   } else {
     action = 'slide_tackle';
-    c.slideRemaining = SLIDE_DURATION;
+    beginSlide(c);
     success = attemptTackle(c, true);
     c.cooldowns.D = now + SLIDE_TACKLE_COOLDOWN * 1000;
   }
@@ -516,10 +576,11 @@ function updateBallControl(dt) {
     if (!owner || !owner.inMatch || !hasBall(owner)) {
       releaseBall(180);
     } else {
-      const sprinting = !!owner.input.sprint;
-      const offset = sprinting ? 1.28 : .86;
-      const response = sprinting ? 6.5 : 9;
-      const blend = 1 - Math.exp(-dt * (sprinting ? 9 : 13));
+      const sliding = owner.slideRemaining > 0;
+      const sprinting = !sliding && !!owner.input.sprint;
+      const offset = sliding ? SLIDE_BALL_CONTROL_OFFSET : (sprinting ? 1.28 : .86);
+      const response = sliding ? 18 : (sprinting ? 6.5 : 9);
+      const blend = 1 - Math.exp(-dt * (sliding ? 22 : (sprinting ? 9 : 13)));
       const targetX = owner.pos.x + owner.facing.x * offset;
       const targetZ = owner.pos.z + owner.facing.z * offset;
       const desiredVX = owner.vel.x + (targetX - ballBody.position.x) * response;
@@ -550,7 +611,7 @@ function updateBallControl(dt) {
     if (c.isAI && c.position === 'KL' && ballOwnerId && ballOwnerId !== c.id) {
       const dist = ballDistance(c);
       if (dist < SLIDE_TACKLE_RANGE && c.slideRemaining === 0 && Date.now() >= c.cooldowns.D) {
-        c.slideRemaining = SLIDE_DURATION;
+        beginSlide(c);
         if (attemptTackle(c, true)) {
           c.cooldowns.D = Date.now() + SLIDE_TACKLE_COOLDOWN * 1000;
           broadcast({ type: 'actionResult', id: c.id, action: 'slide_tackle', success: true, hasBall: false });
@@ -796,7 +857,7 @@ wss.on('connection', (ws) => {
     inMatch: false, pos: { x: 0, z: 0 }, vel: { x: 0, z: 0 },
     input: { x: 0, z: 0, sprint: false },
     facing: { x: 0, z: 1 }, cooldowns: { A: 0, S: 0, D: 0 },
-    slideRemaining: 0, recoveryRemaining: 0, standingActive: 0, lastAction: null,
+    slideRemaining: 0, slideDirection: null, recoveryRemaining: 0, standingActive: 0, lastAction: null,
   };
   let joined = false;
 
@@ -829,6 +890,7 @@ wss.on('connection', (ws) => {
       client.input = { x: 0, z: 0, sprint: false };
       client.vel = { x: 0, z: 0 };
       client.slideRemaining = 0;
+      client.slideDirection = null;
       client.recoveryRemaining = 0;
       client.standingActive = 0;
       if (ballOwnerId === id) releaseBall();
