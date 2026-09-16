@@ -50,7 +50,7 @@ PORT=4000 npm start
   `resolvePlayerBallContact` — cannon-es'in genel çarpışma çözücüsüne bırakmak, hızlı bir
   oyuncunun topu her karede yeniden delip geçmesi yüzünden enerji birikip topun sınırsız
   yükselmesine yol açıyordu). İstemciler sadece pozisyonları alıp yumuşatarak çizer.
-- Saha ölçüleri proje kökündeki `field.js` dosyasıyla istemci ve sunucu arasında
+- Saha ölçüleri `shared/field.js` dosyasıyla istemci ve sunucu arasında
   paylaşılır (X genişlik 48, Z uzunluk 76). Sunucu top sahipliğini mesafe ve
   fizik durumundan belirler; A/S/D eylemlerini buna göre pas/şut/orta veya ayakta/
   kayarak müdahale olarak işler. Bekleme süreleri ve sprint hızı sunucuda uygulanır.
@@ -66,7 +66,7 @@ PORT=4000 npm start
 - Lobideki **"HAZIR"** butonuna basan her oyuncunun durumu sunucuda tutulur ve anında tüm
   istemcilere yayınlanır (✓ HAZIR / Bekleniyor…). Takım veya mevki değiştirmek hazır
   durumunu sıfırlar (eski seçim için verilmiş bir onay artık geçerli sayılmaz).
-- Sunucu şu koşul sağlandığında **otomatik olarak** 5 saniyelik senkronize bir geri sayım
+- Sunucu şu koşul sağlandığında **otomatik olarak** 3 saniyelik senkronize bir geri sayım
   başlatır (`MIN_PLAYERS_TO_START`, varsayılan **1** — tek oyunculu antrenman ve çok
   oyunculu maç aynı hazır akışını kullanır):
   ```

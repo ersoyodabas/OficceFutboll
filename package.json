@@ -1,0 +1,13 @@
+{
+  "name": "office-futboll",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "npm --prefix server test",
+    "check": "node scripts/check-modules.js",
+    "test:browser": "node scripts/browser-smoke.js"
+  },
+  "devDependencies": {
+    "playwright": "^1.63.0"
+  }
+}

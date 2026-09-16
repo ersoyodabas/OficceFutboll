@@ -22,11 +22,8 @@
   const PLAYER_VISUAL_SCALE = 1.18;
   const BALL_VISUAL_SCALE = 0.9;
 
-  // ---------- Default server ----------
-  const LEGACY_SERVER_URL = 'ws://10.17.12.93:3000';
-  const DEFAULT_SERVER_URL = /^https?:$/i.test(window.location.protocol)
-    ? `${window.location.protocol === 'https:' ? 'wss' : 'ws'}://${window.location.host}`
-    : 'ws://localhost:3000';
+  // ---------- Default LAN server ----------
+  const DEFAULT_SERVER_URL = 'ws://10.17.12.93:3000';
   const SERVER_STORAGE_KEY = 'officeFootballServer';
 
   // Accepts "10.17.12.93:3000" or "ws://10.17.12.93:3000" and always returns a
@@ -98,7 +95,7 @@
   (function initServerInput() {
     let savedServer = null;
     try { savedServer = localStorage.getItem(SERVER_STORAGE_KEY); } catch (e) { /* storage not available */ }
-    serverInput.value = savedServer?.trim() === LEGACY_SERVER_URL ? DEFAULT_SERVER_URL : (savedServer?.trim() || DEFAULT_SERVER_URL);
+    serverInput.value = savedServer?.trim() || DEFAULT_SERVER_URL;
   })();
   try {
     const savedName = localStorage.getItem('officeFootballPlayerName');
@@ -205,83 +202,6 @@
   pitch.rotation.x = -Math.PI / 2;
   pitch.receiveShadow = true;
   scene.add(pitch);
-
-  // ---------- Slide-tackle grass spray ----------
-  const slideGrassGeometry = new THREE.BoxGeometry(0.045, 0.13, 0.025);
-  const slideGrassMaterials = [0x2f7d3b, 0x4d963f, 0x72ad4c].map((color) => (
-    new THREE.MeshBasicMaterial({ color })
-  ));
-  const slideGrassParticles = [];
-  const MAX_SLIDE_GRASS_PARTICLES = 360;
-
-  function emitSlideGrass(entity, dt) {
-    entity.slideGrassAccumulator = (entity.slideGrassAccumulator || 0) + dt * 58;
-    let directionX = Number.isFinite(entity.facingX) ? entity.facingX : entity.netVel.x;
-    let directionZ = Number.isFinite(entity.facingZ) ? entity.facingZ : entity.netVel.y;
-    const directionLength = Math.hypot(directionX, directionZ);
-    if (directionLength < 0.01) return;
-    directionX /= directionLength;
-    directionZ /= directionLength;
-    const sideX = -directionZ;
-    const sideZ = directionX;
-
-    while (entity.slideGrassAccumulator >= 1 && slideGrassParticles.length < MAX_SLIDE_GRASS_PARTICLES) {
-      entity.slideGrassAccumulator -= 1;
-      const sideScatter = (Math.random() - 0.5) * 0.8;
-      const trailDistance = 0.2 + Math.random() * 0.75;
-      const shard = new THREE.Mesh(
-        slideGrassGeometry,
-        slideGrassMaterials[Math.floor(Math.random() * slideGrassMaterials.length)]
-      );
-      shard.position.set(
-        entity.renderPos.x - directionX * trailDistance + sideX * sideScatter,
-        0.05,
-        entity.renderPos.z - directionZ * trailDistance + sideZ * sideScatter
-      );
-      shard.rotation.set(Math.random() * Math.PI, Math.random() * Math.PI, Math.random() * Math.PI);
-      const scale = 0.65 + Math.random() * 0.85;
-      shard.scale.setScalar(scale);
-      scene.add(shard);
-
-      const maxLife = 0.38 + Math.random() * 0.28;
-      slideGrassParticles.push({
-        mesh: shard,
-        life: maxLife,
-        maxLife,
-        scale,
-        velocity: new THREE.Vector3(
-          -directionX * (0.3 + Math.random() * 0.9) + sideX * (Math.random() - 0.5) * 1.8,
-          1.25 + Math.random() * 1.45,
-          -directionZ * (0.3 + Math.random() * 0.9) + sideZ * (Math.random() - 0.5) * 1.8
-        ),
-        spin: new THREE.Vector3(
-          (Math.random() - 0.5) * 12,
-          (Math.random() - 0.5) * 12,
-          (Math.random() - 0.5) * 12
-        ),
-      });
-    }
-  }
-
-  function updateSlideGrass(dt) {
-    for (let i = slideGrassParticles.length - 1; i >= 0; i--) {
-      const particle = slideGrassParticles[i];
-      particle.life -= dt;
-      if (particle.life <= 0) {
-        scene.remove(particle.mesh);
-        slideGrassParticles.splice(i, 1);
-        continue;
-      }
-
-      particle.velocity.y -= 5.6 * dt;
-      particle.mesh.position.addScaledVector(particle.velocity, dt);
-      particle.mesh.rotation.x += particle.spin.x * dt;
-      particle.mesh.rotation.y += particle.spin.y * dt;
-      particle.mesh.rotation.z += particle.spin.z * dt;
-      const remaining = Math.max(0.12, particle.life / particle.maxLife);
-      particle.mesh.scale.setScalar(particle.scale * remaining);
-    }
-  }
 
   // Full FIFA-style pitch markings: touchlines/goal lines, halfway line, center
   // circle + spot, both penalty areas + six-yard boxes + spots + arcs, corner
@@ -565,15 +485,11 @@
     const sleeveMat = new THREE.MeshStandardMaterial({ color: teamHex, roughness: 0.75 });
     const sockMat = new THREE.MeshStandardMaterial({ color: teamHex, roughness: 0.75 });
 
-    // Keep world-space movement/yaw separate from the animated body pose.
-    // This prevents the slide lean from mixing with the player's direction.
     const root = new THREE.Group();
-    const body = new THREE.Group();
-    root.add(body);
 
     const hips = new THREE.Group();
     hips.position.y = 0.9;
-    body.add(hips);
+    root.add(hips);
 
     function makeLeg(sideX) {
       const hip = new THREE.Group();
@@ -622,7 +538,7 @@
       const hand = new THREE.Mesh(new THREE.SphereGeometry(0.055, 8, 8), skinMat);
       hand.position.y = -0.28;
       lower.pivot.add(hand);
-      body.add(shoulder);
+      root.add(shoulder);
       return { shoulder, upper: upper.pivot, lower: lower.pivot };
     }
     const armL = makeArm(-0.29);
@@ -630,14 +546,14 @@
 
     const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.07, 0.08, 8), skinMat);
     neck.position.y = shoulderY + 0.06;
-    body.add(neck);
+    root.add(neck);
     const head = new THREE.Mesh(new THREE.SphereGeometry(0.135, 14, 14), skinMat);
     head.position.y = shoulderY + 0.06 + 0.16;
     head.castShadow = true;
-    body.add(head);
+    root.add(head);
     const hair = new THREE.Mesh(new THREE.SphereGeometry(0.14, 14, 10, 0, Math.PI * 2, 0, Math.PI * 0.55), hairMat);
     hair.position.copy(head.position);
-    body.add(hair);
+    root.add(hair);
 
     const ring = new THREE.Mesh(
       new THREE.RingGeometry(0.45, 0.56, 24),
@@ -679,7 +595,7 @@
     targetScene.add(tag);
 
     return {
-      root, body, legL, legR, armL, armR, tag, tagOffsetY, highlight,
+      root, legL, legR, armL, armR, tag, tagOffsetY, highlight,
       gaitPhase: Math.random() * Math.PI * 2,
       kickTimer: 0,
     };
@@ -705,7 +621,7 @@
       f.armR.upper.rotation.x = THREE.MathUtils.lerp(f.armR.upper.rotation.x, 0.3, poseBlend);
       f.armL.lower.rotation.x = THREE.MathUtils.lerp(f.armL.lower.rotation.x, 0.48, poseBlend);
       f.armR.lower.rotation.x = THREE.MathUtils.lerp(f.armR.lower.rotation.x, 0.7, poseBlend);
-      f.body.rotation.z = THREE.MathUtils.lerp(f.body.rotation.z, -0.08, poseBlend);
+      f.root.rotation.z = THREE.MathUtils.lerp(f.root.rotation.z, -0.08, poseBlend);
       f.kickTimer = 0;
       return;
     }
@@ -743,9 +659,9 @@
     }
 
     if (!moving) {
-      f.body.rotation.z = Math.sin(performance.now() * 0.0015) * 0.03;
+      f.root.rotation.z = Math.sin(performance.now() * 0.0015) * 0.03;
     } else {
-      f.body.rotation.z = THREE.MathUtils.lerp(f.body.rotation.z, 0, 0.1);
+      f.root.rotation.z = THREE.MathUtils.lerp(f.root.rotation.z, 0, 0.1);
     }
   }
 
@@ -1384,8 +1300,8 @@
 
       for (const [id, e] of entities) {
         e.renderPos.lerp(e.netPos, Math.min(1, dt * 14));
-        e.footballer.root.position.set(e.renderPos.x, 0, e.renderPos.z);
-        e.footballer.body.position.y = THREE.MathUtils.damp(e.footballer.body.position.y, e.sliding ? .18 : 0, 12, dt);
+        e.footballer.root.position.set(e.renderPos.x, e.footballer.root.position.y, e.renderPos.z);
+        e.footballer.root.position.y = THREE.MathUtils.damp(e.footballer.root.position.y, e.sliding ? .18 : 0, 12, dt);
         e.footballer.tag.position.set(e.renderPos.x, e.footballer.tagOffsetY, e.renderPos.z);
         const spd = e.netVel.length();
         if (Number.isFinite(e.facingX) && Number.isFinite(e.facingZ)) {
@@ -1394,14 +1310,10 @@
           let diff = Math.atan2(Math.sin(targetAngle - cur), Math.cos(targetAngle - cur));
           e.footballer.root.rotation.y = cur + diff * (1 - Math.exp(-dt * PLAYER_ROTATION_SPEED));
         }
-        e.footballer.body.rotation.x = THREE.MathUtils.damp(e.footballer.body.rotation.x, e.sliding ? -1.38 : 0, 15, dt);
+        e.footballer.root.rotation.x = THREE.MathUtils.damp(e.footballer.root.rotation.x, e.sliding ? -1.38 : 0, 15, dt);
         animateFootballer(e.footballer, spd, e.kicking, e.sliding, dt);
-        if (e.sliding) emitSlideGrass(e, dt);
-        else e.slideGrassAccumulator = 0;
       }
     }
-
-    updateSlideGrass(dt);
 
     if (!lobbyOverlay.hidden && lobbyView) {
       lobbyView.render(now);

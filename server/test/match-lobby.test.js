@@ -1,3 +1,7 @@
+import { createRequire } from 'node:module';
+import { fileURLToPath } from 'node:url';
+const require = createRequire(import.meta.url);
+const __dirname = fileURLToPath(new URL('.', import.meta.url));
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const { spawn } = require('node:child_process');
@@ -39,7 +43,8 @@ test('leaving a match preserves the lobby connection and remaining players', { t
     const send = (message) => socket.send(JSON.stringify(message));
     send({ type: 'join', name, team, position: 'OOS' });
     const welcome = await wait((m) => m.type === 'welcome');
-    send({ type: 'select_slot', team, slot: 0 });
+    send({ type: 'select_slot', team, slot: 1 });
+    await wait((m) => m.type === 'lobby' && m.players.some((p) => p.id === welcome.id && p.team === team && p.slot === 1));
     return { socket, messages, wait, send, id: welcome.id };
   }
 
@@ -68,12 +73,11 @@ test('leaving a match preserves the lobby connection and remaining players', { t
   const nextState = await second.wait((m) => m.type === 'state', second.messages.length);
   assert.ok(!nextState.players.some((p) => p.id === first.id));
   assert.ok(nextState.players.some((p) => p.id === second.id));
-  const updateFrom = first.messages.length;
   first.send({ type: 'input', x: 1, z: 1, sprint: true });
   first.send({ type: 'action', key: 'S' });
-  first.send({ type: 'select_slot', team: 'red', slot: 1 });
   first.send({ type: 'ready', ready: true });
-  const updated = await first.wait((m) => m.type === 'lobby' && m.players.some((p) => p.id === first.id && p.team === 'red'), updateFrom);
+  first.send({ type: 'select_slot', team: 'red', slot: 2 });
+  const updated = await first.wait((m) => m.type === 'lobby' && m.players.some((p) => p.id === first.id && p.team === 'red'), first.messages.length);
   assert.equal(updated.players.find((p) => p.id === first.id).ready, false);
 
   const resetFrom = first.messages.length;

@@ -4,282 +4,7 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Ofis Futbolu 3D</title>
-<style>
-  html, body {
-    margin: 0;
-    padding: 0;
-    width: 100%;
-    height: 100%;
-    background: #10151c;
-    overflow: hidden;
-    font-family: "Segoe UI", Arial, sans-serif;
-    color: #f2f2f2;
-  }
-  #app { position: relative; width: 100vw; height: 100vh; }
-  canvas { display: block; }
-
-  /* ---------- broadcast-style HUD ---------- */
-  #hud { position: absolute; inset: 0; pointer-events: none; hidden: none; }
-  #hud[hidden] { display: none !important; }
-
-  #scoreBug {
-    position: absolute;
-    left: 16px;
-    top: calc(16px + env(safe-area-inset-top, 0px));
-    display: flex;
-    align-items: stretch;
-    font-family: "Segoe UI", Arial, sans-serif;
-    box-shadow: 0 6px 18px rgba(0,0,0,0.55);
-    border-radius: 4px;
-    overflow: hidden;
-    background: #0b0e13;
-  }
-  #scoreBug .clock {
-    background: #1c2229;
-    color: #e8ebef;
-    font-weight: 700;
-    font-size: 13px;
-    padding: 0 10px;
-    display: flex;
-    align-items: center;
-    letter-spacing: 0.5px;
-    border-right: 1px solid rgba(255,255,255,0.08);
-  }
-  #scoreBug .teamblock {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    padding: 0 10px;
-    font-weight: 800;
-    font-size: 13px;
-    color: #fff;
-  }
-  #scoreBug .teamblock.blue { background: linear-gradient(180deg, #2d7fd6, #1c5ea3); }
-  #scoreBug .teamblock.red { background: linear-gradient(180deg, #d6482d, #a3311c); }
-  #scoreBug .teamblock .dot { width: 7px; height: 7px; border-radius: 50%; background: rgba(255,255,255,0.85); }
-  #scoreBug .scorenum {
-    background: #10151c;
-    color: #ffd166;
-    font-weight: 800;
-    font-size: 15px;
-    padding: 0 12px;
-    display: flex;
-    align-items: center;
-    min-width: 22px;
-    justify-content: center;
-  }
-  #scoreBug .myflag {
-    font-size: 9px;
-    background: rgba(255,255,255,0.18);
-    border-radius: 3px;
-    padding: 1px 4px;
-    margin-left: 4px;
-    font-weight: 700;
-  }
-
-  #channelBug {
-    position: absolute;
-    right: 16px;
-    top: calc(16px + env(safe-area-inset-top, 0px));
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    background: rgba(10, 14, 20, 0.7);
-    border: 2px solid rgba(255,255,255,0.2);
-    border-radius: 12px;
-    padding: 10px 16px;
-    box-shadow: 0 8px 24px rgba(0,0,0,0.6);
-  }
-  #channelBug .live-dot {
-    width: 12px; height: 12px; border-radius: 50%;
-    background: #ff3b3b;
-    box-shadow: 0 0 12px #ff3b3b;
-    animation: livepulse 1.1s ease-in-out infinite;
-  }
-  @keyframes livepulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
-  #channelBug .live-text {
-    font-size: 14px;
-    font-weight: 900;
-    letter-spacing: 2px;
-    color: #ff5b5b;
-  }
-  #channelBug .chan-sep { width: 2px; height: 24px; background: rgba(255,255,255,0.25); }
-  #channelBug .trt1-logo {
-    height: 60px;
-    width: auto;
-    filter: drop-shadow(0 4px 8px rgba(0,0,0,0.5));
-  }
-
-  #hint {
-    position: absolute;
-    bottom: calc(14px + env(safe-area-inset-bottom, 0px));
-    left: 0; right: 0;
-    text-align: center;
-    font-size: 13px;
-    color: rgba(255,255,255,0.65);
-    text-shadow: 0 1px 3px rgba(0,0,0,0.8);
-  }
-
-  #posLabel {
-    position: absolute;
-    left: 16px;
-    bottom: calc(14px + env(safe-area-inset-bottom, 0px));
-    font-size: 12px;
-    background: rgba(10,14,20,0.7);
-    border: 1px solid rgba(255,255,255,0.15);
-    border-radius: 6px;
-    padding: 5px 10px;
-  }
-
-  /* ---------- overlays ---------- */
-  .overlay {
-    position: absolute; inset: 0;
-    display: flex; flex-direction: column;
-    align-items: center; justify-content: center;
-    background: rgba(6, 9, 13, 0.9);
-    gap: 14px;
-    text-align: center;
-    padding: 20px;
-    overflow-y: auto;
-  }
-  .overlay h1 { font-size: 28px; margin: 0 0 4px; }
-  .overlay p { margin: 0; font-size: 14px; color: rgba(255,255,255,0.8); line-height: 1.6; }
-  .overlay .result { font-size: 36px; font-weight: 800; margin-bottom: -4px; }
-  .overlay .result.win { color: #5ce87a; }
-  .overlay .result.lose { color: #ff6b6b; }
-  .overlay .result.draw { color: #ffd166; }
-  kbd {
-    background: rgba(255,255,255,0.12);
-    border: 1px solid rgba(255,255,255,0.3);
-    border-radius: 5px;
-    padding: 2px 7px;
-    font-size: 13px;
-    font-family: inherit;
-  }
-  .field { display: flex; flex-direction: column; gap: 6px; width: 280px; text-align: left; }
-  .field label { font-size: 12px; color: rgba(255,255,255,0.7); }
-  .field input, .field select {
-    background: rgba(255,255,255,0.08);
-    border: 1px solid rgba(255,255,255,0.25);
-    border-radius: 8px;
-    padding: 10px 12px;
-    color: #fff;
-    font-size: 15px;
-  }
-  .field input:focus, .field select:focus { outline: 2px solid #3ea45f; }
-  button.primary {
-    background: linear-gradient(180deg, #3ea45f, #2c8248);
-    color: white; border: none; border-radius: 8px;
-    padding: 12px 28px; font-size: 16px; font-weight: 700;
-    cursor: pointer; box-shadow: 0 4px 14px rgba(46,140,72,0.45);
-  }
-  button.primary:hover { filter: brightness(1.08); }
-  button.primary:disabled { opacity: 0.45; cursor: default; filter: none; }
-  button.secondary {
-    background: rgba(255,255,255,0.08);
-    color: #e8ebef; border: 1px solid rgba(255,255,255,0.28);
-    border-radius: 8px; padding: 9px 18px; font-size: 14px; font-weight: 600;
-    cursor: pointer;
-  }
-  button.secondary:hover { background: rgba(255,255,255,0.14); }
-  button.secondary:disabled { opacity: 0.45; cursor: default; }
-  #connStatus { font-size: 13px; min-height: 16px; color: #ffb454; }
-  #connStatus.error { color: #ff6b6b; }
-  #connStatus.success { color: #5ce87a; }
-  #joinStatus { font-size: 13px; min-height: 18px; color: #ff6b6b; }
-
-  #lobbyOverlay { justify-content: flex-start; background: radial-gradient(ellipse at top, #193849, #0a111af5 75%); padding: 28px 24px; }
-  .lobby-shell { width: min(1240px, 100%); margin: auto; text-align: left; }
-  .lobby-header, .lobby-footer, .pitch-header, .lobby-player { display: flex; align-items: center; justify-content: space-between; gap: 20px; }
-  .eyebrow { display: block; color: #7be0b6; font-size: 11px; font-weight: 800; letter-spacing: 2px; margin-bottom: 10px; }
-  #lobbyOverlay h1 { font-size: 32px; letter-spacing: -1px; }
-  .invite-area { text-align: right; }
-  #inviteLinkStatus { min-height: 18px; margin-top: 8px; font-size: 12px; }
-  #inviteLinkStatus.success { color: #5ce87a; }
-  #inviteLinkStatus.error, #slotStatus { color: #ffb89e; }
-  .pitch-panel { margin: 24px 0 16px; border: 1px solid #2a4354; border-radius: 20px; overflow: hidden; background: #101f2a; }
-  .pitch-header { padding: 18px 24px; border-bottom: 1px solid #ffffff0d; }
-  .pitch-team { display: flex; align-items: center; gap: 12px; color: #88cbff; font-weight: 800; font-size: 13px; letter-spacing: 1px; }
-  .pitch-team.red { color: #ff9caa; }
-  .pitch-team .team-count { font-size: 12px; letter-spacing: 0; color: #d2dfeb; background: #ffffff09; padding: 6px 10px; border-radius: 6px; }
-  #lobbyPlayerCount { color: #97aebe; font-size: 12px; }
-  .pitch-scroll { overflow-x: auto; }
-  #lobbyPitch { position: relative; width: 100%; min-width: 660px; aspect-ratio: 2 / 1; }
-  #lobbyPitch canvas { width: 100%; height: 100%; position: absolute; inset: 0; }
-  #pitchSlots { position: absolute; inset: 0; }
-  .pitch-slot { position: absolute; width: 64px; height: 74px; transform: translate(-50%, -75%); padding: 0; background: transparent; border: 0; color: #d0eaff; cursor: pointer; border-radius: 20px; }
-  .pitch-slot.red { color: #ffd2d9; }
-  .slot-plus { display: grid; place-items: center; position: absolute; bottom: 0; left: 10px; width: 44px; height: 32px; border: 1px dashed #a5d4ff99; border-radius: 50%; background: #142c4266; font-size: 24px; font-weight: 300; transition: background .15s, box-shadow .15s; }
-  .pitch-slot.red .slot-plus { border-color: #ffb0c199; background: #411d2f55; }
-  .pitch-slot:hover:not(:disabled) .slot-plus, .pitch-slot:focus-visible .slot-plus { background: #d7f2ff35; box-shadow: 0 0 20px #b2e9ff50; }
-  .pitch-slot.occupied .slot-plus { display: none; }
-  .pitch-slot:disabled { cursor: default; }
-  .slot-player { display: none; position: absolute; top: 100%; left: 50%; transform: translateX(-50%); max-width: 108px; width: max-content; padding: 4px 8px; border: 1px solid #90b9d344; border-radius: 6px; background: #0c1826e8; font-size: 11px; }
-  .pitch-slot.occupied .slot-player { display: block; }
-  .slot-name { display: block; max-width: 100px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .slot-state { display: block; font-size: 9px; color: #adbdc9; margin-top: 3px; }
-  .pitch-slot.me .slot-player { border-color: #ffe28b; }
-  .pitch-slot.ready .slot-state { color: #8df5b4; }
-  .pitch-caption { display: flex; justify-content: space-between; gap: 12px; padding: 12px 24px; border-top: 1px solid #ffffff0d; }
-  .pitch-caption p { font-size: 12px; color: #a0b5c5; }
-  #slotStatus { min-height: 20px; font-size: 13px; margin-bottom: 12px; }
-  .lobby-footer { padding: 20px 24px; background: #13222d; border: 1px solid #2a4354; border-radius: 16px; flex-wrap: wrap; }
-  .lobby-player { justify-content: flex-start; gap: 12px; }
-  .profile-avatar { display: grid; place-items: center; width: 42px; height: 42px; border-radius: 12px; background: #23475d; color: #9fdcff; font-size: 18px; font-weight: 800; }
-  #profileName { display: block; font-size: 14px; max-width: 180px; overflow-wrap: anywhere; }
-  #profileRole { display: block; font-size: 11px; color: #9db0c3; margin-top: 5px; }
-  .ready-info { flex: 1; min-width: 220px; }
-  #lobbyStatus { font-size: 13px; }
-  #readyProgress { font-size: 12px; color: #a8bdce; margin-top: 5px; }
-  .ready-meter { width: 180px; height: 4px; border-radius: 4px; overflow: hidden; background: #2a3a49; margin-top: 10px; }
-  #readyMeterFill { display: block; height: 100%; background: #7be0b6; width: 0; transition: width .2s; }
-  #readyBtn { min-width: 160px; }
-  #readyBtn.isReady { background: linear-gradient(180deg, #2d7fd6, #1c5ea3); box-shadow: 0 4px 14px #2d7fd644; }
-  button:focus-visible { outline: 2px solid #a1e9ff; outline-offset: 4px; }
-  #matchMenu { z-index: 80; background: #050b14a8; backdrop-filter: blur(8px); justify-content: flex-start; }
-  .menu-card { box-sizing: border-box; flex-shrink: 0; margin: auto; width: min(420px, 100%); padding: 32px; background: linear-gradient(145deg, #1c3040, #101a26); border: 1px solid #3e5264; border-radius: 22px; box-shadow: 0 24px 90px #0009; text-align: left; }
-  .menu-card h1 { margin-bottom: 12px; }
-  .menu-card p { color: #adbdcb; }
-  .menu-score { display: flex; justify-content: space-between; align-items: center; padding: 20px 0; margin: 16px 0; border-block: 1px solid #ffffff12; font-size: 12px; font-weight: 700; }
-  .menu-score strong { font-size: 28px; color: #fff; }
-  .menu-score .blue { color: #83caff; }
-  .menu-score .red { color: #ff909b; }
-  .menu-card button { width: 100%; margin-top: 12px; padding: 14px; }
-  .menu-card .menu-hint { text-align: center; margin-top: 22px; font-size: 12px; }
-  #menuBtn { position: absolute; right: 16px; top: 84px; pointer-events: auto; }
-  @media (max-width: 700px) {
-    #lobbyOverlay { padding: 20px 12px; }
-    .lobby-header { align-items: flex-start; flex-direction: column; gap: 12px; }
-    .invite-area { text-align: left; }
-    .pitch-header { padding: 14px 12px; gap: 8px; }
-    .pitch-team { font-size: 11px; gap: 6px; letter-spacing: 0; }
-    #lobbyPlayerCount { display: none; }
-    .pitch-caption { padding: 12px; flex-direction: column; gap: 4px; }
-    .lobby-footer { align-items: stretch; gap: 18px; }
-    #readyBtn { width: 100%; }
-    #hint { font-size: 10px; bottom: 50px; }
-  }
-
-  /* ---------- synchronized countdown overlay ---------- */
-  #countdownOverlay {
-    position: absolute; inset: 0;
-    display: flex; flex-direction: column; align-items: center; justify-content: center;
-    background: rgba(6, 9, 13, 0.75);
-    z-index: 60;
-  }
-  #countdownNumber {
-    font-size: 140px; font-weight: 900; color: #5ce87a;
-    text-shadow: 0 0 40px rgba(92,232,122,0.6), 0 6px 18px rgba(0,0,0,0.6);
-    line-height: 1;
-  }
-  #countdownNumber.go {
-    font-size: 56px; color: #ffd166;
-    text-shadow: 0 0 30px rgba(255,209,102,0.6), 0 6px 18px rgba(0,0,0,0.6);
-  }
-  #countdownSub { font-size: 14px; color: rgba(255,255,255,0.7); margin-top: 10px; letter-spacing: 1px; }
-
-  [hidden] { display: none !important; }
-</style>
+<link rel="stylesheet" href="src/ui/styles.css" />
 </head>
 <body>
   <div id="app">
@@ -303,6 +28,7 @@
       </div>
       <div id="posLabel"></div>
       <button class="secondary" id="menuBtn" type="button" aria-haspopup="dialog">ESC · Menü</button>
+      <button class="secondary" id="hudSettingsBtn" type="button" data-open-settings aria-haspopup="dialog">Ayarlar</button>
     </div>
 
     <div id="hint" hidden>
@@ -329,7 +55,7 @@
       <div class="lobby-shell">
         <header class="lobby-header">
           <div><span class="eyebrow">OF?S FUTBOLU / 5'E 5</span><h1>Sahada yerini al.</h1><p>Bo? bir yere t?kla, tak?m?na kat?l ve haz?r ol.</p></div>
-          <div class="invite-area"><button class="secondary" id="copyInviteLinkBtn" type="button">? Arkada??n? davet et</button><p id="inviteLinkStatus" role="status"></p></div>
+          <div class="invite-area"><button class="secondary" id="copyInviteLinkBtn" type="button">? Arkada??n? davet et</button><button class="secondary" id="lobbySettingsBtn" type="button" data-open-settings aria-haspopup="dialog">Ayarlar</button><p id="inviteLinkStatus" role="status"></p></div>
         </header>
         <section class="pitch-panel" aria-label="Tak?m ve oyuncu se?imi">
           <div class="pitch-header">
@@ -356,8 +82,29 @@
         <p id="menuDescription">Menü açıkken oyuncun bekler. Çevrim içi maç devam eder.</p>
         <div class="menu-score"><span class="blue">MAVİ</span><strong id="menuScore">0 : 0</strong><span class="red">KIRMIZI</span></div>
         <button class="primary" id="resumeBtn" type="button">Oyuna devam et</button>
+        <button class="secondary" id="matchSettingsBtn" type="button" data-open-settings aria-haspopup="dialog">Ses ve tuş ayarları</button>
         <button class="secondary" id="leaveMatchBtn" type="button">Maçtan çık · Lobiye dön</button>
         <p class="menu-hint"><kbd>ESC</kbd> ile oyuna dön</p>
+      </div>
+    </div>
+
+    <div class="overlay" id="settingsOverlay" role="dialog" aria-modal="true" aria-labelledby="settingsTitle" hidden>
+      <div class="settings-card">
+        <div class="settings-heading"><div><span class="eyebrow">OYUN AYARLARI</span><h1 id="settingsTitle">Ses ve tuşlar</h1></div><button class="secondary" id="settingsCloseBtn" type="button">Kapat</button></div>
+        <section class="settings-section" aria-labelledby="audioSettingsTitle">
+          <h2 id="audioSettingsTitle">Ses</h2>
+          <label class="range-setting" for="masterVolume"><span>Genel ses</span><output id="masterVolumeValue">50%</output></label>
+          <input id="masterVolume" type="range" min="0" max="1" step="0.01" value="0.5" />
+          <label class="toggle-setting" for="lobbyMusicEnabled"><span>Lobi müziği</span><input id="lobbyMusicEnabled" type="checkbox" checked /></label>
+          <label class="range-setting" for="lobbyMusicVolume"><span>Lobi müziği seviyesi</span><output id="lobbyMusicVolumeValue">50%</output></label>
+          <input id="lobbyMusicVolume" type="range" min="0" max="1" step="0.01" value="0.5" />
+          <p class="settings-note">Lobide çalan özgün stadyum teması, maç başlayınca durur.</p>
+        </section>
+        <section class="settings-section" aria-labelledby="keySettingsTitle">
+          <div class="settings-heading compact"><h2 id="keySettingsTitle">Tuş atamaları</h2><button class="secondary" id="resetKeysBtn" type="button">Varsayılana dön</button></div>
+          <p id="keyCaptureStatus" role="status" aria-live="polite"></p>
+          <div id="keyBindings"></div>
+        </section>
       </div>
     </div>
 
@@ -380,9 +127,6 @@
   </div>
 
   <script src="lib/three.min.js"></script>
-  <script src="field.js"></script>
-  <script src="stadium.js"></script>
-  <script src="lobby.js"></script>
-  <script src="game.js"></script>
+  <script type="module" src="src/core/game.js"></script>
 </body>
 </html>
