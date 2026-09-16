@@ -1,3 +1,4 @@
+import { recordBallTouch } from './ballTouches.js';
 import { HALF_W, HALF_L, GOAL_HALF_W, GOAL_HEIGHT, BALL_R, PLAYER_R } from '../../shared/field.js';
 import * as CANNON from 'cannon-es';
 export function buildWorld() {
@@ -54,6 +55,7 @@ function resolvePlayerBallContact(c) {
   const minDist = PLAYER_R + BALL_R;
   if (dist >= minDist || dist < 1e-4) return;
 
+  if (state.ballBody.position.y <= 1.35) recordBallTouch(state, c);
   const nx = dx / dist, nz = dz / dist;
   const overlap = minDist - dist;
   state.ballBody.position.x += nx * overlap;

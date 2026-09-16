@@ -1,0 +1,67 @@
+.goal-presentation {
+  --goal-color: #56b6ff;
+  position: fixed; inset: 0; z-index: 70; pointer-events: none;
+  display: grid; place-items: center; overflow: hidden; isolation: isolate;
+  color: #f4f7ff; font-family: "Segoe UI", Arial, sans-serif;
+}
+.goal-presentation[hidden], .goal-presentation [hidden] { display: none; }
+.goal-wash { position: absolute; inset: 0; z-index: -1;
+  background: radial-gradient(ellipse at 50% 44%, #172941a8, #020710e8 80%), linear-gradient(115deg, #071326d9, #0d1529a8);
+}
+.goal-wash::after { content: ''; position: absolute; inset: -50%; opacity: .09;
+  background: repeating-linear-gradient(118deg, transparent 0 110px, var(--goal-color) 111px 112px, transparent 113px 220px);
+  transform: translateX(-3%);
+}
+.goal-card { width: min(880px, 94vw); text-align: center; padding: 22px 12px; }
+.goal-eyebrow, .goal-footer { font-size: 10px; letter-spacing: .3em; font-weight: 600; color: #b6c6d9; }
+.goal-eyebrow span, .goal-footer span { color: var(--goal-color); padding: 0 12px; }
+.goal-badge { position: relative; display: grid; place-items: center; margin: 26px auto 0;
+  width: clamp(64px, 10vh, 100px); height: clamp(74px, 12vh, 116px);
+  filter: drop-shadow(0 0 24px color-mix(in srgb, var(--goal-color) 30%, transparent));
+}
+.goal-initials { display: grid; place-items: center; position: absolute; inset: 3px;
+  clip-path: polygon(5% 0,95% 0,90% 70%,50% 100%,10% 70%);
+  background: linear-gradient(140deg, var(--goal-color), #132034); color: white; font-weight: 900; font-size: 25px;
+}
+.goal-badge img { position: absolute; width: 100%; height: 100%; object-fit: contain; }
+.goal-title { font-size: clamp(86px, 15vw, 184px); line-height: 1.05; font-weight: 950; letter-spacing: -.065em;
+  font-style: italic; padding-right: .09em; text-shadow: 0 0 65px color-mix(in srgb, var(--goal-color) 25%, transparent);
+}
+.goal-scorer { font-size: clamp(24px, 4.5vw, 48px); line-height: 1.2; font-weight: 800; letter-spacing: -.025em; overflow-wrap: anywhere; }
+.goal-team { margin: 12px 0 25px; color: var(--goal-color); font-size: clamp(13px, 2vw, 18px); font-weight: 650; letter-spacing: .24em; }
+.goal-score { display: inline-flex; align-items: center; justify-content: center; gap: 20px;
+  min-width: min(430px, 86vw); padding: 10px 24px; border: 1px solid #b5cbf122; border-radius: 8px;
+  background: linear-gradient(120deg, #e5f2ff0d, #e5f2ff03); box-shadow: 0 18px 50px #0003;
+}
+.goal-score strong { font-size: clamp(42px, 7vw, 66px); line-height: 1.1; font-weight: 800; font-variant-numeric: tabular-nums; }
+.goal-home-label, .goal-away-label { font-size: 10px; letter-spacing: .12em; max-width: 78px; }
+.goal-score-divider { font-size: 24px; color: #8394a9; }
+.goal-footer { margin-top: 24px; font-size: 9px; letter-spacing: .2em; }
+.goal-line { position: absolute; height: 2px; width: min(720px, 86vw); background: linear-gradient(90deg, transparent, var(--goal-color), transparent); }
+.goal-line-top { top: 8%; } .goal-line-bottom { bottom: 8%; }
+.goal-presentation.is-active { animation: goal-shell var(--goal-duration) var(--goal-delay) both; }
+.goal-presentation.is-active, .goal-presentation.is-active * { animation-timing-function: cubic-bezier(.16, 1, .3, 1); }
+.is-active .goal-title { animation: goal-title var(--goal-duration) var(--goal-delay) both; }
+.is-active .goal-badge, .is-active .goal-scorer, .is-active .goal-team, .is-active .goal-score, .is-active .goal-footer {
+  animation: goal-details var(--goal-duration) var(--goal-delay) both;
+}
+.is-active .goal-line { animation: goal-line var(--goal-duration) var(--goal-delay) both; }
+@keyframes goal-shell { 0% { opacity: 0; } 10%,85% { opacity: 1; } 100% { opacity: 0; } }
+@keyframes goal-title { 0%,10% { opacity: 0; transform: translateY(25px) scale(1.16); } 25%,85% { opacity: 1; transform: none; } 100% { opacity: 0; transform: scale(.96); } }
+@keyframes goal-details { 0%,20% { opacity: 0; transform: translateY(18px); } 30%,85% { opacity: 1; transform: none; } 100% { opacity: 0; transform: translateY(-12px); } }
+@keyframes goal-line { 0% { opacity: 0; transform: scaleX(.1); } 18%,85% { opacity: .8; transform: scaleX(1); } 100% { opacity: 0; transform: scaleX(1.15); } }
+@media (max-width: 480px) {
+  .goal-score { gap: 12px; padding: 12px; min-width: 0; }
+  .goal-home-label, .goal-away-label { max-width: 58px; font-size: 9px; }
+  .goal-eyebrow { font-size: 8px; letter-spacing: .18em; }
+}
+@media (max-height: 620px) {
+  .goal-badge { width: 55px; height: 64px; margin-top: 10px; }
+  .goal-title { font-size: clamp(60px, 17vh, 106px); }
+  .goal-scorer { font-size: 26px; } .goal-team { margin: 6px 0 12px; }
+  .goal-score strong { font-size: 38px; } .goal-footer { margin-top: 12px; }
+  .goal-line-top { top: 3%; } .goal-line-bottom { bottom: 3%; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .goal-presentation.is-active * { animation: none; }
+}

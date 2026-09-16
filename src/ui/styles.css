@@ -15,93 +15,73 @@ html, body {
   #hud { position: absolute; inset: 0; pointer-events: none; hidden: none; }
   #hud[hidden] { display: none !important; }
 
+  /* Top-centre scoreboard: crest · short name · score · short name · crest, remaining time below. */
   #scoreBug {
     position: absolute;
-    left: 16px;
-    top: calc(16px + env(safe-area-inset-top, 0px));
+    left: 50%;
+    top: calc(12px + env(safe-area-inset-top, 0px));
+    transform: translateX(-50%);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    font-family: "Segoe UI", Arial, sans-serif;
+    filter: drop-shadow(0 6px 16px rgba(0,0,0,0.55));
+  }
+  #scoreBug .score-row {
     display: flex;
     align-items: stretch;
-    font-family: "Segoe UI", Arial, sans-serif;
-    box-shadow: 0 6px 18px rgba(0,0,0,0.55);
-    border-radius: 4px;
+    background: rgba(8, 20, 18, 0.88);
+    border-radius: 3px;
     overflow: hidden;
-    background: #0b0e13;
-  }
-  #scoreBug .clock {
-    background: #1c2229;
-    color: #e8ebef;
-    font-weight: 700;
-    font-size: 13px;
-    padding: 0 10px;
-    display: flex;
-    align-items: center;
-    letter-spacing: 0.5px;
-    border-right: 1px solid rgba(255,255,255,0.08);
   }
   #scoreBug .teamblock {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 92px;
+    padding: 4px 12px;
+    font-weight: 900;
+    font-size: 18px;
+    letter-spacing: 0.5px;
+    color: #fff;
+  }
+  #scoreBug .teamblock.blue { justify-content: flex-end; }
+  #scoreBug .team-crest { width: 26px; height: 30px; filter: none; }
+  #scoreBug .team-crest span { font-size: 8px; }
+  #scoreBug .score-box {
     display: flex;
     align-items: center;
     gap: 6px;
-    padding: 0 10px;
-    font-weight: 800;
-    font-size: 13px;
-    color: #fff;
-  }
-  #scoreBug .teamblock.blue { background: linear-gradient(180deg, #2d7fd6, #1c5ea3); }
-  #scoreBug .teamblock.red { background: linear-gradient(180deg, #d6482d, #a3311c); }
-  #scoreBug .teamblock .dot { width: 7px; height: 7px; border-radius: 50%; background: rgba(255,255,255,0.85); }
-  #scoreBug .scorenum {
-    background: #10151c;
-    color: #ffd166;
-    font-weight: 800;
-    font-size: 15px;
     padding: 0 12px;
-    display: flex;
-    align-items: center;
-    min-width: 22px;
-    justify-content: center;
-  }
-  #scoreBug .myflag {
-    font-size: 9px;
-    background: rgba(255,255,255,0.18);
-    border-radius: 3px;
-    padding: 1px 4px;
-    margin-left: 4px;
-    font-weight: 700;
-  }
-
-  #channelBug {
-    position: absolute;
-    right: 16px;
-    top: calc(16px + env(safe-area-inset-top, 0px));
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    background: rgba(10, 14, 20, 0.7);
-    border: 2px solid rgba(255,255,255,0.2);
-    border-radius: 12px;
-    padding: 10px 16px;
-    box-shadow: 0 8px 24px rgba(0,0,0,0.6);
-  }
-  #channelBug .live-dot {
-    width: 12px; height: 12px; border-radius: 50%;
-    background: #ff3b3b;
-    box-shadow: 0 0 12px #ff3b3b;
-    animation: livepulse 1.1s ease-in-out infinite;
-  }
-  @keyframes livepulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
-  #channelBug .live-text {
-    font-size: 14px;
+    background: #22e39a;
+    color: #06140f;
     font-weight: 900;
-    letter-spacing: 2px;
-    color: #ff5b5b;
+    font-size: 22px;
+    font-variant-numeric: tabular-nums;
   }
-  #channelBug .chan-sep { width: 2px; height: 24px; background: rgba(255,255,255,0.25); }
-  #channelBug .trt1-logo {
-    height: 60px;
-    width: auto;
-    filter: drop-shadow(0 4px 8px rgba(0,0,0,0.5));
+  #scoreBug .scorenum { min-width: 14px; text-align: center; }
+  /* Marks your own team with an accent line; the "SEN" text stays for screen readers. */
+  #scoreBug .myflag {
+    position: absolute;
+    left: 12px; right: 12px; bottom: 2px;
+    height: 2px;
+    background: #22e39a;
+    font-size: 0;
+    overflow: hidden;
   }
+  #scoreBug .clock {
+    margin-top: 3px;
+    padding: 2px 12px;
+    background: rgba(8, 20, 18, 0.88);
+    border-radius: 3px;
+    color: #eafff6;
+    font-weight: 800;
+    font-size: 17px;
+    letter-spacing: 1px;
+    font-variant-numeric: tabular-nums;
+  }
+  #scoreBug .clock.low { color: #ff6b6b; }
 
   #hint {
     position: absolute;
@@ -181,45 +161,69 @@ html, body {
   #connStatus.success { color: #5ce87a; }
   #joinStatus { font-size: 13px; min-height: 18px; color: #ff6b6b; }
 
-  #lobbyOverlay { justify-content: flex-start; background: radial-gradient(ellipse at top, #193849, #0a111af5 75%); padding: 28px 24px; }
-  .lobby-shell { width: min(1240px, 100%); margin: auto; text-align: left; }
-  .lobby-header, .lobby-footer, .pitch-header, .lobby-player { display: flex; align-items: center; justify-content: space-between; gap: 20px; }
   .eyebrow { display: block; color: #7be0b6; font-size: 11px; font-weight: 800; letter-spacing: 2px; margin-bottom: 10px; }
-  #lobbyLogo { cursor: pointer; width: fit-content; }
+
+  /* ---------- lobby: full screen, flat, never scrolls vertically ---------- */
+  #lobbyOverlay { padding: 0; gap: 0; overflow: hidden; align-items: stretch; justify-content: stretch; text-align: left; background: #0b141c; }
+  .lobby-shell { display: flex; flex-direction: column; width: 100%; height: 100%; min-height: 0; }
+  .lobby-shell p { margin: 0; }
+  .lobby-header, .lobby-footer, .lobby-player, .lobby-tools, .side-heading { display: flex; align-items: center; gap: 12px; }
+  .lobby-header, .lobby-footer { justify-content: space-between; flex-shrink: 0; padding: 10px 20px; }
+  .lobby-header { padding-top: calc(10px + env(safe-area-inset-top, 0px)); border-bottom: 1px solid #ffffff12; }
+  .lobby-shell .lobby-brand { display: flex; align-items: baseline; gap: 10px; margin: 0; font-size: 13px; font-weight: 800; letter-spacing: 2px; }
+  .lobby-brand small { font-size: 11px; font-weight: 700; letter-spacing: 1px; color: #8fa3b3; }
+  #lobbyLogo { cursor: pointer; color: #7be0b6; }
   #lobbyLogo:hover, #lobbyLogo:focus-visible { color: #a4f5cc; text-shadow: 0 0 12px #7be0b666; }
-  #lobbyOverlay h1 { font-size: 32px; letter-spacing: -1px; }
-  .invite-area { text-align: right; }
-  .lobby-music-control { display: inline-flex; align-items: center; gap: 8px; margin: 0 8px; vertical-align: middle; }
-  .lobby-music-control label { font-size: 12px; color: #a8bdce; white-space: nowrap; }
-  .lobby-music-control input[type="range"] { width: 100px; accent-color: #7be0b6; }
-  #inviteLinkStatus { min-height: 18px; margin-top: 8px; font-size: 12px; }
-  #inviteLinkStatus.success { color: #5ce87a; }
-  #inviteLinkStatus.error, #slotStatus { color: #ffb89e; }
-  .pitch-panel { margin: 0; border: 1px solid #2a4354; border-radius: 20px; overflow: hidden; background: #101f2a; flex: 2; min-width: 0; }
-  .lobby-main { display: flex; align-items: stretch; gap: 16px; margin: 24px 0 16px; }
-  .chat-panel { flex: 1; min-width: 240px; max-width: 320px; display: flex; flex-direction: column; border: 1px solid #2a4354; border-radius: 20px; background: #101f2a; overflow: hidden; }
-  .chat-header { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 14px 16px; border-bottom: 1px solid #ffffff0d; }
-  .chat-header h2 { margin: 0; font-size: 14px; color: #d2dfeb; }
-  .chat-toggle { padding: 4px 10px; min-width: 0; line-height: 1; }
+  .lobby-tools button.secondary { padding: 6px 12px; font-size: 13px; }
+  #profileBtn { position: relative; z-index: 75; } /* stays usable above the countdown overlay */
+  .lobby-music-control { display: flex; align-items: center; gap: 6px; }
+  .lobby-music-control label { font-size: 13px; }
+  .lobby-music-control input[type="range"] { width: 90px; accent-color: #7be0b6; }
+
+  .club-sides { display: grid; grid-template-columns: 1fr 1fr; flex-shrink: 0; border-bottom: 1px solid #ffffff12; }
+  .club-side { display: flex; align-items: center; gap: 14px; min-width: 0; padding: 10px 20px; box-shadow: inset 3px 0 #58baff; }
+  .club-side[data-side="red"] { flex-direction: row-reverse; text-align: right; border-left: 1px solid #ffffff12; box-shadow: inset -3px 0 #ff718d; }
+  .club-info { flex: 1; min-width: 0; }
+  .club-side-label, .club-side h2, .lobby-shell .club-meta { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .club-side-label { font-size: 10px; font-weight: 700; letter-spacing: 1.5px; color: #8fa3b3; }
+  .club-captain { letter-spacing: 0; color: #f1d38c; }
+  .club-captain::before { content: " · "; color: #8fa3b3; }
+  .club-side h2 { margin: 2px 0; font-size: 18px; line-height: 1.25; }
+  .lobby-shell .club-meta { font-size: 11px; line-height: 1.3; color: #8fa3b3; }
+  .club-side .club-badge { width: 40px; height: 47px; }
+  .club-side .club-badge span { font-size: 13px; }
+  .club-side .kit-preview { width: 52px; height: 52px; flex-shrink: 0; }
+  .team-count { flex-shrink: 0; font-size: 13px; font-weight: 700; color: #d2dfeb; font-variant-numeric: tabular-nums; }
+  .club-actions { display: flex; gap: 6px; flex-shrink: 0; }
+  .club-actions button.secondary { padding: 6px 10px; font-size: 12px; }
+
+  .lobby-main { display: flex; flex: 1; min-height: 0; }
+  .pitch-panel { position: relative; flex: 1; min-width: 0; min-height: 0; overflow: hidden; }
+  #lobbyPitch { position: absolute; inset: 0; }
+  #lobbyPitch canvas { width: 100%; height: 100%; position: absolute; inset: 0; }
+  .lobby-shell #slotStatus { position: absolute; left: 50%; bottom: 12px; transform: translateX(-50%); max-width: calc(100% - 24px); font-size: 13px; color: #ffb89e; text-align: center; text-shadow: 0 1px 4px #000; pointer-events: none; }
+
+  .lobby-side { display: flex; flex-direction: column; width: 300px; flex-shrink: 0; min-height: 0; border-left: 1px solid #ffffff12; }
+  .side-heading { justify-content: space-between; padding: 12px 16px 8px; }
+  .side-heading h2 { margin: 0; font-size: 11px; font-weight: 800; letter-spacing: 1.5px; text-transform: uppercase; color: #8fa3b3; }
+  #lobbyPlayerCount { font-size: 11px; color: #8fa3b3; }
+  .roster-panel { display: flex; flex-direction: column; flex: 0 1 auto; max-height: 50%; min-height: 0; }
+  .lobby-side:has(.chat-panel.collapsed) .roster-panel { flex: 1; max-height: none; }
+  .chat-panel { display: flex; flex-direction: column; flex: 1; min-height: 0; border-top: 1px solid #ffffff12; }
+  .chat-panel.collapsed { flex: 0 0 auto; }
+  .chat-toggle { padding: 2px 6px; border: 0; background: none; color: #8fa3b3; font-size: 14px; line-height: 1; cursor: pointer; }
+  .chat-toggle:hover { color: #fff; }
   .chat-body { display: flex; flex-direction: column; flex: 1; min-height: 0; }
   .chat-panel.collapsed .chat-body { display: none; }
-  .chat-messages { flex: 1; overflow-y: auto; padding: 12px 16px; display: flex; flex-direction: column; gap: 8px; max-height: 320px; }
+  .chat-messages { flex: 1; min-height: 0; overflow-y: auto; padding: 4px 16px 8px; display: flex; flex-direction: column; gap: 6px; }
   .chat-message { font-size: 12px; line-height: 1.4; color: #d2dfeb; overflow-wrap: anywhere; }
   .chat-sender { font-weight: 800; color: #d2dfeb; }
   .chat-sender.blue { color: #88cbff; }
   .chat-sender.red { color: #ff9caa; }
-  .chat-form { display: flex; gap: 8px; padding: 12px 16px; border-top: 1px solid #ffffff0d; }
-  .chat-form input { flex: 1; min-width: 0; background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.25); border-radius: 8px; padding: 9px 12px; color: #fff; font-size: 13px; }
+  .chat-form { display: flex; gap: 6px; padding: 10px 12px; border-top: 1px solid #ffffff12; }
+  .chat-form input { flex: 1; min-width: 0; background: #ffffff0d; border: 1px solid #ffffff1f; border-radius: 6px; padding: 8px 10px; color: #fff; font-size: 13px; }
   .chat-form input:focus { outline: 2px solid #3ea45f; }
-  .chat-form button { min-width: 0; padding: 9px 16px; font-size: 13px; }
-  .pitch-header { padding: 18px 24px; border-bottom: 1px solid #ffffff0d; }
-  .pitch-team { display: flex; align-items: center; gap: 12px; color: #88cbff; font-weight: 800; font-size: 13px; letter-spacing: 1px; }
-  .pitch-team.red { color: #ff9caa; }
-  .pitch-team .team-count { font-size: 12px; letter-spacing: 0; color: #d2dfeb; background: #ffffff09; padding: 6px 10px; border-radius: 6px; }
-  #lobbyPlayerCount { color: #97aebe; font-size: 12px; }
-  .pitch-scroll { overflow-x: auto; }
-  #lobbyPitch { position: relative; width: 100%; min-width: 660px; aspect-ratio: 2 / 1; }
-  #lobbyPitch canvas { width: 100%; height: 100%; position: absolute; inset: 0; }
+  .chat-form button.secondary { padding: 8px 12px; font-size: 13px; }
   #pitchSlots { position: absolute; inset: 0; }
   .pitch-slot { position: absolute; width: 64px; height: 74px; transform: translate(-50%, -75%); padding: 0; background: transparent; border: 0; color: #d0eaff; cursor: pointer; border-radius: 20px; }
   .pitch-slot.red { color: #ffd2d9; }
@@ -234,22 +238,68 @@ html, body {
   .slot-state { display: block; font-size: 9px; color: #adbdc9; margin-top: 3px; }
   .pitch-slot.me .slot-player { border-color: #ffe28b; }
   .pitch-slot.ready .slot-state { color: #8df5b4; }
-  .pitch-caption { display: flex; justify-content: space-between; gap: 12px; padding: 12px 24px; border-top: 1px solid #ffffff0d; }
-  .pitch-caption p { font-size: 12px; color: #a0b5c5; }
-  #slotStatus { min-height: 20px; font-size: 13px; margin-bottom: 12px; }
-  .lobby-footer { padding: 20px 24px; background: #13222d; border: 1px solid #2a4354; border-radius: 16px; flex-wrap: wrap; }
-  .lobby-player { justify-content: flex-start; gap: 12px; }
-  .profile-avatar { display: grid; place-items: center; width: 42px; height: 42px; border-radius: 12px; background: #23475d; color: #9fdcff; font-size: 18px; font-weight: 800; }
-  #profileName { display: block; font-size: 14px; max-width: 180px; overflow-wrap: anywhere; }
-  #profileRole { display: block; font-size: 11px; color: #9db0c3; margin-top: 5px; }
-  .ready-info { flex: 1; min-width: 220px; }
-  #lobbyStatus { font-size: 13px; }
-  #readyProgress { font-size: 12px; color: #a8bdce; margin-top: 5px; }
-  .ready-meter { width: 180px; height: 4px; border-radius: 4px; overflow: hidden; background: #2a3a49; margin-top: 10px; }
+  .lobby-footer { padding-bottom: calc(10px + env(safe-area-inset-bottom, 0px)); border-top: 1px solid #ffffff12; }
+  .lobby-player { gap: 10px; min-width: 0; }
+  .profile-avatar { display: grid; place-items: center; flex-shrink: 0; width: 36px; height: 36px; border-radius: 50%; background: #23475d; color: #9fdcff; font-size: 15px; font-weight: 800; }
+  #profileName { display: block; max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; }
+  #profileRole { display: block; margin-top: 2px; font-size: 11px; color: #8fa3b3; }
+  .ready-info { display: flex; align-items: center; justify-content: flex-end; gap: 16px; flex: 1; min-width: 0; }
+  .lobby-shell #lobbyStatus { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; color: #d2dfeb; }
+  .ready-progress { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+  .lobby-shell #readyProgress { font-size: 12px; color: #8fa3b3; white-space: nowrap; }
+  .ready-meter { width: 100px; height: 4px; border-radius: 4px; overflow: hidden; background: #2a3a49; }
   #readyMeterFill { display: block; height: 100%; background: #7be0b6; width: 0; transition: width .2s; }
-  #readyBtn { min-width: 160px; }
+  #readyBtn { min-width: 160px; padding: 10px 24px; }
   #readyBtn.isReady { background: linear-gradient(180deg, #2d7fd6, #1c5ea3); box-shadow: 0 4px 14px #2d7fd644; }
   button:focus-visible { outline: 2px solid #a1e9ff; outline-offset: 4px; }
+  dialog { box-sizing: border-box; margin: auto; width: min(560px, calc(100% - 24px)); max-height: calc(100dvh - 24px); overflow: auto; padding: 28px; border: 1px solid #486074; border-radius: 20px; color: #eff6fc; background: linear-gradient(145deg, #1b3041, #0e1926); box-shadow: 0 24px 90px #0009; }
+  dialog::backdrop { background: #040a14bc; backdrop-filter: blur(5px); }
+  dialog h1 { font-size: 26px; margin: 0 0 12px; }
+  dialog p { color: #aebfce; font-size: 13px; line-height: 1.6; }
+  dialog label { display: block; font-size: 13px; margin: 20px 0 8px; }
+  dialog input, dialog select { box-sizing: border-box; width: 100%; min-width: 0; padding: 12px; margin-top: 6px; border: 1px solid #546879; border-radius: 8px; background: #0c1b29; color: #f2f8ff; font: inherit; }
+  dialog input:focus, dialog select:focus { outline: 2px solid #9ad9ff; outline-offset: 2px; }
+  dialog input[aria-invalid="true"] { border-color: #ffc065; }
+  #profileStatus { color: #ffcc89; min-height: 42px; margin-top: 12px; }
+  .profile-actions { display: flex; justify-content: flex-end; gap: 10px; }
+  .ready-roster { display: flex; flex-direction: column; gap: 2px; flex: 1; min-height: 0; overflow-y: auto; list-style: none; margin: 0; padding: 0 8px 8px; }
+  .ready-player { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; column-gap: 10px; padding: 6px 8px; border-radius: 4px; box-shadow: inset 2px 0 #548b69; }
+  .ready-player[data-status="not-ready"] { box-shadow: inset 2px 0 #ffbc60; }
+  .ready-player[data-status="in-match"] { box-shadow: inset 2px 0 #39546c; }
+  .ready-player-name { grid-area: 1 / 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
+  .ready-player-detail { grid-area: 2 / 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 10px; color: #8fa3b3; }
+  .ready-badge { grid-area: 1 / 2 / 3 / 3; font-size: 10px; letter-spacing: .04em; font-weight: 850; padding: 3px 6px; border-radius: 4px; color: #9fdfb7; background: #1a3328; white-space: nowrap; }
+  [data-status="not-ready"] .ready-badge { color: #211709; background: #ffc576; animation: ready-attention 2.8s ease-in-out infinite; }
+  [data-status="in-match"] .ready-badge { background: #28405a; color: #bbdefb; }
+  .pitch-slot.not-ready .slot-player { background: #402b16f5; border: 1px solid #ffbb65; box-shadow: 0 0 14px #fba74733; }
+  .pitch-slot.not-ready .slot-state { color: #211709; background: #ffc576; border-radius: 3px; padding: 3px 4px; font-weight: 900; white-space: nowrap; }
+  .pitch-slot.ready .slot-player { background: #152e25f5; border-color: #548b69; }
+  .pitch-slot.ready .slot-state { font-weight: 750; }
+  @keyframes ready-attention { 0%,100% { opacity: 1; } 50% { opacity: .72; } }
+  .club-badge { --club-color: #376194; width: 66px; height: 78px; flex-shrink: 0; position: relative; display: grid; place-items: center; filter: drop-shadow(0 4px 8px #0005); }
+  .club-badge span { display: grid; place-items: center; width: 100%; height: 100%; clip-path: polygon(8% 0, 92% 0, 88% 72%, 50% 100%, 12% 72%); background: linear-gradient(145deg, var(--club-color), #152436); color: white; font-size: 20px; font-weight: 900; text-shadow: 0 1px 4px #000; }
+  .club-badge img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
+  .club-filters { display: grid; grid-template-columns: 1.4fr 1fr; gap: 12px; }
+  .club-filters label { margin-top: 10px; }
+  #clubResults { margin: 6px 0; font-size: 11px; }
+  .club-carousel { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 14px 0; }
+  #clubCandidate { flex: 1; text-align: center; }
+  #clubCandidateBadge { margin: auto auto 10px; }
+  #clubCandidateName { font-size: 24px; }
+  #clubKitPreview { display: block; width: 170px; height: 170px; margin: 12px auto 0; }
+  .club-kit-tabs { display: flex; gap: 8px; justify-content: center; }
+  .club-kit-tabs button { font-size: 12px; padding: 9px 12px; }
+  .club-kit-tabs button.secondary[aria-pressed="true"] { background: #b6ecd3; color: #132b24; border-color: #b6ecd3; }
+  #clubSelectionStatus { min-height: 42px; text-align: center; margin: 16px 0 10px; }
+  #clubSelectionStatus.selection-error { color: #ffd099; }
+  #clubConfirmBtn { width: 100%; }
+  @media (max-width: 760px) {
+    dialog { padding: 20px; }
+    #clubKitPreview { width: 130px; height: 130px; }
+    .club-filters { grid-template-columns: 1fr 1fr; }
+    .club-kit-tabs button { padding: 8px; }
+  }
+  @media (prefers-reduced-motion: reduce) { [data-status="not-ready"] .ready-badge { animation: none; } }
   #matchMenu { z-index: 80; background: #050b14a8; backdrop-filter: blur(8px); justify-content: flex-start; }
   .menu-card { box-sizing: border-box; flex-shrink: 0; margin: auto; width: min(420px, 100%); padding: 32px; background: linear-gradient(145deg, #1c3040, #101a26); border: 1px solid #3e5264; border-radius: 22px; box-shadow: 0 24px 90px #0009; text-align: left; }
   .menu-card h1 { margin-bottom: 12px; }
@@ -260,9 +310,8 @@ html, body {
   .menu-score .red { color: #ff909b; }
   .menu-card button { width: 100%; margin-top: 12px; padding: 14px; }
   .menu-card .menu-hint { text-align: center; margin-top: 22px; font-size: 12px; }
-  #menuBtn { position: absolute; right: 16px; top: 84px; pointer-events: auto; }
-  #hudSettingsBtn { position: absolute; right: 16px; top: 130px; pointer-events: auto; }
-  .invite-area button + button { margin-left: 8px; }
+  #menuBtn { position: absolute; right: 16px; top: calc(16px + env(safe-area-inset-top, 0px)); pointer-events: auto; }
+  #hudSettingsBtn { position: absolute; right: 16px; top: calc(62px + env(safe-area-inset-top, 0px)); pointer-events: auto; }
   #settingsOverlay { z-index: 100; background: #050b14cc; backdrop-filter: blur(8px); }
   .settings-card { box-sizing: border-box; width: min(620px, 100%); max-height: min(780px, 100%); overflow-y: auto; padding: 28px; border: 1px solid #3e5264; border-radius: 22px; background: linear-gradient(145deg, #1c3040, #101a26); box-shadow: 0 24px 90px #0009; text-align: left; }
   .settings-heading { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; }
@@ -280,24 +329,45 @@ html, body {
   .key-binding-row { padding: 10px 0; border-bottom: 1px solid #ffffff10; font-size: 13px; }
   .key-binding-button { min-width: 104px; margin: 0; padding: 7px 12px; font-family: Consolas, monospace; }
   @media (max-width: 700px) {
-    #lobbyOverlay { padding: 20px 12px; }
-    .lobby-header { align-items: flex-start; flex-direction: column; gap: 12px; }
-    .invite-area { text-align: left; }
-    .lobby-music-control { margin: 6px 0; }
-    .lobby-music-control input[type="range"] { width: 140px; }
-    .pitch-header { padding: 14px 12px; gap: 8px; }
-    .lobby-main { flex-direction: column; }
-    .chat-panel { max-width: none; }
-    .chat-messages { max-height: 200px; }
-    .pitch-team { font-size: 11px; gap: 6px; letter-spacing: 0; }
-    #lobbyPlayerCount { display: none; }
-    .pitch-caption { padding: 12px; flex-direction: column; gap: 4px; }
-    .lobby-footer { align-items: stretch; gap: 18px; }
-    #readyBtn { width: 100%; }
     #hint { font-size: 10px; bottom: 50px; }
-    #hudSettingsBtn { top: 124px; }
+    /* The centred scoreboard spans the top, so the buttons move below it. */
+    #scoreBug .teamblock { min-width: 0; padding: 4px 8px; font-size: 15px; gap: 6px; }
+    #scoreBug .score-box { font-size: 18px; padding: 0 8px; }
+    #menuBtn { top: calc(84px + env(safe-area-inset-top, 0px)); }
+    #hudSettingsBtn { top: calc(130px + env(safe-area-inset-top, 0px)); }
     .settings-card { padding: 22px 18px; }
-    .invite-area button + button { margin-left: 4px; }
+  }
+
+  /* Lobby on short screens: drop secondary details before anything scrolls. */
+  @media (max-height: 640px) {
+    .club-side { padding-block: 6px; }
+    .club-side .kit-preview, .lobby-shell .club-meta { display: none; }
+  }
+  /* Lobby on narrow screens: pitch first, roster as a swipeable strip, compact chat. */
+  @media (max-width: 760px) {
+    .lobby-header, .lobby-footer { padding-inline: 12px; }
+    .lobby-brand small, .lobby-music-control { display: none; }
+    .club-side, .club-side[data-side="red"] { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 6px 8px; padding: 8px 12px; text-align: left; }
+    .club-side .club-badge { width: 30px; height: 35px; }
+    .club-side .club-badge span { font-size: 10px; }
+    .club-side h2 { font-size: 14px; }
+    .club-side .kit-preview, .lobby-shell .club-meta, .club-captain { display: none; }
+    .club-actions { grid-column: 1 / -1; }
+    .club-actions button.secondary { flex: 1; min-width: 0; padding: 5px 4px; font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .pitch-slot { width: 44px; height: 52px; }
+    .slot-plus { left: 8px; width: 28px; height: 20px; font-size: 16px; }
+    .slot-player { max-width: 64px; padding: 2px 4px; font-size: 9px; }
+    .slot-name { max-width: 56px; }
+    .slot-state { font-size: 7px; margin-top: 1px; }
+    .lobby-main { flex-direction: column; }
+    .lobby-side { width: auto; max-height: 40%; border-left: 0; border-top: 1px solid #ffffff12; }
+    .side-heading { padding: 8px 12px 6px; }
+    .roster-panel, .lobby-side:has(.chat-panel.collapsed) .roster-panel { flex: 0 0 auto; max-height: none; }
+    .ready-roster { flex-direction: row; gap: 6px; overflow: auto hidden; padding: 0 12px 8px; }
+    .ready-player { flex: 0 0 auto; max-width: 180px; }
+    .lobby-footer { flex-wrap: wrap; gap: 8px; }
+    .ready-info { order: 3; flex-basis: 100%; justify-content: space-between; }
+    #readyBtn { min-width: 0; padding: 10px 18px; }
   }
 
   /* ---------- synchronized countdown overlay ---------- */

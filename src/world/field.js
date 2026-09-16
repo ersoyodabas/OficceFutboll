@@ -1,139 +1,153 @@
 import { THREE } from '../engine/three.js';
 import { FIELD, HALF_W, HALF_L } from '../../shared/field.js';
-import { makeCanvasTexture } from '../engine/assetLoader.js';
-import { assetUrl } from '../engine/assetLoader.js';
+import { makeCanvasTexture, loadTexture } from '../engine/assetLoader.js';
+
+// Grass continues past the lines (as on a real pitch) so the touchlines and
+// goal lines sit on turf rather than on the stadium floor.
+const RUNOFF = 8;
+const TURF_SIZE_X = HALF_W * 2 + RUNOFF * 2; // across the pitch (world X)
+const TURF_SIZE_Z = HALF_L * 2 + RUNOFF * 2; // along the pitch (world Z)
+
+// ---------- saha.png grass surface ----------
+// saha.png (1536 × 1024) is a grass photo with seven mowing bands running
+// across its long side; its left/right edges fall on a dark→light band edge,
+// so it repeats cleanly along the band axis. One tile spans a third of the
+// pitch length, which gives ~3 m bands and puts both goal lines and the
+// halfway line on band edges. Texels stay square (~7 px per 10 cm), fine
+// enough to keep blade detail at the broadcast camera distance.
+const GRASS_TILE_LENGTH = (HALF_L * 2) / 3;            // metres of pitch per image width (band axis)
+const GRASS_TILE_WIDTH = GRASS_TILE_LENGTH * 1024 / 1536; // metres per image height
+export const grassTextureRepeatX = TURF_SIZE_X / GRASS_TILE_WIDTH;  // ≈ 4.42 tiles across the turf
+export const grassTextureRepeatY = TURF_SIZE_Z / GRASS_TILE_LENGTH; // ≈ 3.75 tiles along the turf
+// The photo's natural colour is a saturated yellow-green; this linear multiply
+// pulls it toward a deeper natural turf green under stadium lighting.
+// Measured on the broadcast view: untinted-ish output averaged sRGB (74,133,36);
+// this brings it to roughly (65,122,42).
+const GRASS_TINT = new THREE.Color().setRGB(.62, .6, 1.15);
+const GRASS_ANISOTROPY_CAP = 8;
+// Height of the markings above the turf; with polygon offset this keeps them
+// from z-fighting at the long, shallow broadcast view without visibly floating.
+const MARKINGS_LIFT = .008;
+
 export function createField({ scene, renderer }) {
-const grassLoader = new THREE.TextureLoader();
-function loadLocalTexture(url, onError) {
-  return grassLoader.load(url, undefined, undefined, onError);
-}
-const grassTex = loadLocalTexture(assetUrl('textures/pitch/grass_diffuse.png'), () => {
-  grassMat.map = null; grassMat.color.set(0x31854a); grassMat.needsUpdate = true;
+const anisotropy = Math.min(renderer.capabilities.getMaxAnisotropy(), GRASS_ANISOTROPY_CAP);
+
+const grassTexture = loadTexture('textures/pitch/saha.png', {
+  onError: () => { grassMat.map = null; grassMat.color.set(0x3f7a2c); grassMat.needsUpdate = true; },
 });
-const grassNormal = loadLocalTexture(assetUrl('textures/pitch/grass_normal.png'), () => {
-  grassMat.normalMap = null; grassMat.needsUpdate = true;
+grassTexture.colorSpace = THREE.SRGBColorSpace;
+grassTexture.wrapS = grassTexture.wrapT = THREE.RepeatWrapping;
+grassTexture.anisotropy = anisotropy;
+// Rotate a quarter turn so the bands run across the pitch (they vary along its
+// length, like the stripes seen from the main-stand camera). With the rotation
+// about the centre, repeat.x scales the turf's length axis and repeat.y its width.
+grassTexture.center.set(.5, .5);
+grassTexture.rotation = Math.PI / 2;
+grassTexture.repeat.set(grassTextureRepeatY, grassTextureRepeatX);
+// Along the band axis the texture coordinate is .5 + offset - z / GRASS_TILE_LENGTH;
+// shift it so a tile edge (a band edge) lands on each goal line.
+grassTexture.offset.set((1 - (.5 + HALF_L / GRASS_TILE_LENGTH) % 1) % 1, 0);
+
+const grassNormal = loadTexture('textures/pitch/grass_normal.png', {
+  onError: () => { grassMat.normalMap = null; grassMat.needsUpdate = true; },
 });
-grassTex.wrapS = grassTex.wrapT = THREE.RepeatWrapping;
 grassNormal.wrapS = grassNormal.wrapT = THREE.RepeatWrapping;
-grassTex.repeat.set(10, 16);
-grassNormal.repeat.copy(grassTex.repeat);
-grassTex.colorSpace = THREE.SRGBColorSpace;
-grassTex.anisotropy = Math.min(8, renderer.capabilities.getMaxAnisotropy());
-grassNormal.anisotropy = grassTex.anisotropy;
-const grassMat = new THREE.MeshStandardMaterial({ map: grassTex, normalMap: grassNormal, normalScale: new THREE.Vector2(.2, .2), color: 0xe9ffe9, roughness: .92 });
-const pitch = new THREE.Mesh(
-  new THREE.PlaneGeometry(HALF_W * 2, HALF_L * 2),
-  grassMat
-);
-pitch.rotation.x = -Math.PI / 2;
-pitch.receiveShadow = true;
-scene.add(pitch);
+grassNormal.repeat.set(TURF_SIZE_X / 4, TURF_SIZE_Z / 4);
+grassNormal.anisotropy = anisotropy;
 
-// Full FIFA-style pitch markings: touchlines/goal lines, halfway line, center
-// circle + spot, both penalty areas + six-yard boxes + spots + arcs, corner
-// arcs. Proportions are scaled from real pitch ratios (105x68m) onto our
-// gameplay-sized field, then drawn as one transparent overlay texture.
-function createPitchMarkings(ctx, s) {
-  const scaleX = s / (HALF_W * 2);
-  const scaleZ = s / (HALF_L * 2);
-  const toPx = (x, z) => [s / 2 + x * scaleX, s / 2 + z * scaleZ];
-  // The goal line already closes each box. Draw only the three inward edges so
-  // overlapping strokes cannot create a second, offset line at the boundary.
-  const strokeOpenBoxXZ = (halfW, goalLineZ, innerZ) => {
-    const [xLeft, goalY] = toPx(-halfW, goalLineZ);
-    const [xRight, innerY] = toPx(halfW, innerZ);
-    ctx.beginPath();
-    ctx.moveTo(xLeft, goalY);
-    ctx.lineTo(xLeft, innerY);
-    ctx.lineTo(xRight, innerY);
-    ctx.lineTo(xRight, goalY);
-    ctx.stroke();
-  };
+// Matte natural turf: high roughness, no metalness, a faint normal map for
+// light variation. No emissive, so the grass never looks self-lit.
+const grassMat = new THREE.MeshStandardMaterial({
+  map: grassTexture,
+  color: GRASS_TINT,
+  roughness: .92,
+  metalness: 0,
+  normalMap: grassNormal,
+  normalScale: new THREE.Vector2(.15, .15),
+});
 
-  ctx.strokeStyle = 'rgba(255,255,255,0.92)';
-  ctx.fillStyle = 'rgba(255,255,255,0.92)';
-  ctx.lineWidth = 4;
-
-  // touchlines + goal lines
-  ctx.strokeRect(ctx.lineWidth / 2, ctx.lineWidth / 2, s - ctx.lineWidth, s - ctx.lineWidth);
-  // halfway line
-  ctx.beginPath(); ctx.moveTo(0, s / 2); ctx.lineTo(s, s / 2); ctx.stroke();
-  // center circle + spot
-  const centerRadiusX = FIELD.CENTER_CIRCLE_R * scaleX;
-  const centerRadiusZ = FIELD.CENTER_CIRCLE_R * scaleZ;
-  ctx.beginPath(); ctx.ellipse(s / 2, s / 2, centerRadiusX, centerRadiusZ, 0, 0, Math.PI * 2); ctx.stroke();
-  ctx.beginPath(); ctx.arc(s / 2, s / 2, 4, 0, Math.PI * 2); ctx.fill();
-
-  // penalty area, six-yard box, spot and arc — mirrored for both ends
-  const penaltyHalfW = FIELD.PENALTY_HALF_W, penaltyDepth = FIELD.PENALTY_DEPTH;
-  const sixYardHalfW = FIELD.SIX_YARD_HALF_W, sixYardDepth = FIELD.SIX_YARD_DEPTH;
-  const penaltySpotDist = FIELD.PENALTY_SPOT_DISTANCE;
-  const arcRadiusX = FIELD.CENTER_CIRCLE_R * scaleX;
-  const arcRadiusZ = FIELD.CENTER_CIRCLE_R * scaleZ;
-
-  [1, -1].forEach((sign) => {
-    // sign === 1: goal at +Z (blue's own goal), sign === -1: goal at -Z (red's own goal)
-    const goalLineZ = sign * HALF_L;
-    const inward = -sign; // direction from the goal line toward the pitch center
-
-    strokeOpenBoxXZ(penaltyHalfW, goalLineZ, goalLineZ + inward * penaltyDepth);
-    strokeOpenBoxXZ(sixYardHalfW, goalLineZ, goalLineZ + inward * sixYardDepth);
-
-    const [spotX, spotZ] = toPx(0, goalLineZ + inward * penaltySpotDist);
-    ctx.beginPath(); ctx.arc(spotX, spotZ, 4, 0, Math.PI * 2); ctx.fill();
-
-    // penalty arc: the portion of the circle around the spot that bulges
-    // toward the pitch center (away from the goal line). Canvas angles: 0 =
-    // +x (right), increasing clockwise since Y grows downward, so "toward
-    // center" is 270°/-90° when the goal is at the bottom edge (sign===1)
-    // and 90° when the goal is at the top edge (sign===-1).
-    const centerAngle = sign === 1 ? Math.PI * 1.5 : Math.PI * 0.5;
-    const boxToSpot = penaltyDepth - penaltySpotDist;
-    const spread = Math.acos(boxToSpot / FIELD.CENTER_CIRCLE_R);
-    ctx.beginPath();
-    ctx.ellipse(spotX, spotZ, arcRadiusX, arcRadiusZ, 0, centerAngle - spread, centerAngle + spread);
-    ctx.stroke();
-  });
-
-  // corner arcs
-  const cornerRX = FIELD.CORNER_ARC_R * scaleX;
-  const cornerRZ = FIELD.CORNER_ARC_R * scaleZ;
-  [[-HALF_W, -HALF_L, 0, Math.PI / 2], [HALF_W, -HALF_L, Math.PI / 2, Math.PI],
-    [-HALF_W, HALF_L, -Math.PI / 2, 0], [HALF_W, HALF_L, Math.PI, Math.PI * 1.5]]
-    .forEach(([x, z, a0, a1]) => {
-      const [cx, cz] = toPx(x, z);
-      ctx.beginPath(); ctx.ellipse(cx, cz, cornerRX, cornerRZ, 0, a0, a1); ctx.stroke();
-    });
+// A turf-textured plane of any size centred on the pitch; UVs are remapped so
+// every surface using grassMat samples the same world-space pattern (the lobby
+// pitch reuses this with the same material and texture).
+function createGrassGeometry(width, depth) {
+  const geometry = new THREE.PlaneGeometry(width, depth);
+  const uv = geometry.attributes.uv;
+  for (let i = 0; i < uv.count; i++) {
+    uv.setXY(i, .5 + (uv.getX(i) - .5) * width / TURF_SIZE_X, .5 + (uv.getY(i) - .5) * depth / TURF_SIZE_Z);
+  }
+  return geometry;
 }
-const linesTex = makeCanvasTexture(1024, 1024, createPitchMarkings);
-const lines = new THREE.Mesh(
-  new THREE.PlaneGeometry(HALF_W * 2, HALF_L * 2),
-  new THREE.MeshBasicMaterial({ map: linesTex, transparent: true, depthWrite: false })
-);
-lines.rotation.x = -Math.PI / 2;
-lines.position.y = 0.006;
-scene.add(lines);
+const turf = new THREE.Mesh(createGrassGeometry(TURF_SIZE_X, TURF_SIZE_Z), grassMat);
+turf.rotation.x = -Math.PI / 2;
+turf.receiveShadow = true;
+scene.add(turf);
 
-// Subtle alternating mowing stripes (bands across the width, repeating along
-// the length) — a low-opacity light/dark overlay, cheap and gameplay-neutral.
-function createGrassStripes() {
-  const stripeCount = 12;
-  const tex = makeCanvasTexture(64, 1024, (ctx, w, h) => {
-    for (let y = 0; y < h; y++) {
-      const shade = Math.cos(y / h * stripeCount * Math.PI);
-      ctx.fillStyle = shade >= 0 ? `rgba(255,255,255,${shade * .025})` : `rgba(0,0,0,${-shade * .025})`;
-      ctx.fillRect(0, y, w, 1);
-    }
-  });
-  const mesh = new THREE.Mesh(
-    new THREE.PlaneGeometry(HALF_W * 2, HALF_L * 2),
-    new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false })
-  );
+// Markings overlay: a tiny lift plus polygon offset and a later render order.
+function overlay(texture, width, depth, order) {
+  const mesh = new THREE.Mesh(new THREE.PlaneGeometry(width, depth), new THREE.MeshBasicMaterial({
+    map: texture, transparent: true, depthWrite: false,
+    polygonOffset: true, polygonOffsetFactor: -order, polygonOffsetUnits: -order * 4,
+  }));
   mesh.rotation.x = -Math.PI / 2;
-  mesh.position.y = 0.003;
+  mesh.position.y = MARKINGS_LIFT;
+  mesh.renderOrder = order;
+  scene.add(mesh);
   return mesh;
 }
-scene.add(createGrassStripes());
 
-return { grassMat, createPitchMarkings };
+// Rush pitch markings drawn in metres: touchlines/goal lines, halfway line,
+// centre circle and spot, penalty areas with arcs, corner arcs and the dotted
+// offside lines one third of the length from each goal line. The canvas maps
+// x ∈ [-HALF_W, HALF_W] and z ∈ [-HALF_L, HALF_L] onto [0, s].
+function createPitchMarkings(ctx, s) {
+  const lw = FIELD.LINE_WIDTH;
+  ctx.setTransform(s / (HALF_W * 2), 0, 0, s / (HALF_L * 2), s / 2, s / 2);
+  ctx.strokeStyle = 'rgba(255,255,255,0.95)';
+  ctx.fillStyle = 'rgba(255,255,255,0.95)';
+  ctx.lineWidth = lw;
+  ctx.lineCap = 'butt';
+  const line = (x0, z0, x1, z1) => { ctx.beginPath(); ctx.moveTo(x0, z0); ctx.lineTo(x1, z1); ctx.stroke(); };
+
+  // Lines belong to the area they bound, so the boundary sits inside the pitch.
+  ctx.strokeRect(-HALF_W + lw / 2, -HALF_L + lw / 2, HALF_W * 2 - lw, HALF_L * 2 - lw);
+  line(-HALF_W, 0, HALF_W, 0);
+  ctx.beginPath(); ctx.arc(0, 0, FIELD.CENTER_CIRCLE_R, 0, Math.PI * 2); ctx.stroke();
+  ctx.beginPath(); ctx.arc(0, 0, .16, 0, Math.PI * 2); ctx.fill();
+
+  for (const sign of [1, -1]) {
+    const goalLine = sign * (HALF_L - lw / 2);
+    const boxLine = sign * (HALF_L - FIELD.PENALTY_DEPTH);
+    const halfW = FIELD.PENALTY_HALF_W;
+    ctx.beginPath();
+    ctx.moveTo(-halfW, goalLine); ctx.lineTo(-halfW, boxLine); ctx.lineTo(halfW, boxLine); ctx.lineTo(halfW, goalLine);
+    ctx.stroke();
+
+    // Penalty arc: the part of the circle around the (unmarked) spot outside the area.
+    const spotZ = sign * (HALF_L - FIELD.PENALTY_SPOT_DISTANCE);
+    const spread = Math.acos((FIELD.PENALTY_DEPTH - FIELD.PENALTY_SPOT_DISTANCE) / FIELD.CENTER_CIRCLE_R);
+    const towardCentre = -sign * Math.PI / 2;
+    ctx.beginPath(); ctx.arc(0, spotZ, FIELD.CENTER_CIRCLE_R, towardCentre - spread, towardCentre + spread); ctx.stroke();
+
+    // Dotted offside line with short solid ends at the touchlines.
+    const offsideZ = sign * (HALF_L - FIELD.OFFSIDE_LINE_DISTANCE);
+    const solidEnd = 2.5;
+    line(-HALF_W, offsideZ, -HALF_W + solidEnd, offsideZ);
+    line(HALF_W - solidEnd, offsideZ, HALF_W, offsideZ);
+    ctx.setLineDash([.9, .75]);
+    line(-HALF_W + solidEnd + .6, offsideZ, HALF_W - solidEnd - .6, offsideZ);
+    ctx.setLineDash([]);
+  }
+
+  const r = FIELD.CORNER_ARC_R;
+  for (const [x, z, a0, a1] of [[-HALF_W, -HALF_L, 0, Math.PI / 2], [HALF_W, -HALF_L, Math.PI / 2, Math.PI],
+    [-HALF_W, HALF_L, -Math.PI / 2, 0], [HALF_W, HALF_L, Math.PI, Math.PI * 1.5]]) {
+    ctx.beginPath(); ctx.arc(x, z, r, a0, a1); ctx.stroke();
+  }
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+}
+const linesTex = makeCanvasTexture(2048, 2048, createPitchMarkings);
+linesTex.anisotropy = anisotropy; // keeps thin lines crisp at the shallow broadcast angle
+overlay(linesTex, HALF_W * 2, HALF_L * 2, 2);
+
+return { grassMat, createGrassGeometry, createPitchMarkings };
 }

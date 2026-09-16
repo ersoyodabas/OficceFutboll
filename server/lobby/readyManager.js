@@ -1,5 +1,6 @@
 import { SERVER } from '../../src/network/protocol.js';
 import { MIN_PLAYERS_TO_START, COUNTDOWN_SECONDS } from '../core/config.js';
+import { validateClubSelections } from '../../shared/kitClash.js';
 export function createReadyManager({ state, broadcast, broadcastLobby }) {
 function areAllPlayersReady() {
   if (state.clients.size === 0) return false;
@@ -8,7 +9,7 @@ function areAllPlayersReady() {
 }
 
 function canStartCountdown() {
-  return state.phase === 'lobby' && state.clients.size >= MIN_PLAYERS_TO_START && areAllPlayersReady();
+  return state.phase === 'lobby' && !validateClubSelections(state.teams) && state.clients.size >= MIN_PLAYERS_TO_START && areAllPlayersReady();
 }
 
 function startCountdown() {

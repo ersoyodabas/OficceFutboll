@@ -4,6 +4,7 @@ import { createBroadcast } from '../network/broadcast.js';
 import { createLobbyManager } from '../lobby/lobbyManager.js';
 import { createReadyManager } from '../lobby/readyManager.js';
 import { createChatManager } from '../lobby/chatManager.js';
+import { createClubManager } from '../lobby/clubManager.js';
 import { createInvitationHandler } from '../lobby/invitationManager.js';
 import { buildWorld, createBallPhysics } from '../gameplay/ballPhysics.js';
 import { createPlayerManager } from '../gameplay/playerManager.js';
@@ -14,11 +15,12 @@ import { createConnectionHandler } from '../network/messageHandler.js';
 import { createHttpServer } from '../network/httpServer.js';
 import { createWebSocketServer } from '../network/websocketServer.js';
 import { getLanIPv4Addresses } from '../network/lan.js';
+import { openBrowser } from '../network/openBrowser.js';
 
-export function createServer() {
-  const state = createGameState();
+export function createServer({ state = createGameState() } = {}) {
   const transport = createBroadcast({ state });
   const lobby = createLobbyManager({ state, ...transport });
+  const clubs = createClubManager({ state, ...transport, ...lobby });
   const ready = createReadyManager({ state, ...transport, ...lobby });
   const chat = createChatManager({ ...transport });
   const players = createPlayerManager({ state });
@@ -29,7 +31,7 @@ export function createServer() {
   const invitation = createInvitationHandler({ state, getLanIPv4Addresses,
     getPort: () => httpServer.address()?.port || PORT });
   const httpServer = createHttpServer(invitation);
-  const connection = createConnectionHandler({ state, ...transport, ...lobby, ready, actions, match, lobby, chat });
+  const connection = createConnectionHandler({ state, ...transport, ...lobby, ready, actions, match, lobby, chat, clubs });
   const wss = createWebSocketServer({ httpServer, ...connection });
   let interval;
 
@@ -56,10 +58,12 @@ export async function startServer() {
   const server = createServer();
   const { port } = await server.listen();
   console.log('========================================\n OFFICE FUTBOLL SERVER\n========================================');
-  console.log(`Local:\n  ws://localhost:${port}\n\nLAN:`);
+  console.log(`Local:\n  http://localhost:${port}  (ws://localhost:${port})\n\nLAN:`);
   const addresses = getLanIPv4Addresses();
-  if (addresses.length) addresses.forEach((ip) => console.log(`  ws://${ip}:${port}`));
+  if (addresses.length) addresses.forEach((ip) => console.log(`  http://${ip}:${port}  (ws://${ip}:${port})`));
   else console.log('  (LAN arayuzu bulunamadi)');
   console.log(`\nPort: ${port}\n\nWaiting for players...\n========================================`);
+  // OPEN_BROWSER=0 skips this, e.g. when the server runs on a headless machine.
+  if (process.env.OPEN_BROWSER !== '0') openBrowser(`http://${addresses[0] || 'localhost'}:${port}`);
   return server;
 }

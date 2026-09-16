@@ -2,7 +2,7 @@ import { createWebSocketClient } from './websocket.js';
 import { CLIENT } from './protocol.js';
 
 // Connection/session presentation, separate from raw transport and 3D objects.
-export function createSession({ state, ui, players, onMessage }) {
+export function createSession({ state, ui, players, onMessage, onDisconnect = () => {} }) {
   const network = createWebSocketClient({
     getConnection: () => ({ name: ui.dom.nameInput.value.trim(), serverUrl: ui.dom.serverInput.value }),
     onStatus(status, url) {
@@ -12,6 +12,7 @@ export function createSession({ state, ui, players, onMessage }) {
     },
     onMessage,
     onClose() {
+      onDisconnect(true);
       state.phase = 'idle';
       state.waitingInLobby = false;
       ui.hideCountdownOverlay();

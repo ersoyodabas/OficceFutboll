@@ -1,3 +1,4 @@
+import { getKit } from '../../shared/clubs.js';
 import { PLAYER_ROTATION_SPEED } from '../core/config.js';
 import { THREE } from '../engine/three.js';
 import { createSlideGrassEffects } from './slideGrassEffects.js';
@@ -40,12 +41,20 @@ function hashCode(str) {
   return h;
 }
 
-function applySnapshot(players) {
+function applySnapshot(players, snap = false) {
+  if (snap) slideGrass.clear();
   const seen = new Set();
   for (const p of players) {
     seen.add(p.id);
     const e = ensureEntity(p.id, p.team, p.name);
+    const kit = getKit(state.teams?.[p.team]?.clubId, state.teams?.[p.team]?.kitId);
+    if (kit) e.footballer.applyKit(kit);
     e.netPos.set(p.x, 0, p.z);
+    if (snap) {
+      e.renderPos.copy(e.netPos); e.footballer.root.position.copy(e.netPos);
+      e.footballer.body.rotation.x = 0; e.footballer.body.position.y = 0;
+      e.wasSliding = false; e.grassEmitAccumulator = e.sprintEmitAccumulator = 0;
+    }
     e.netVel.set(p.vx, p.vz);
     e.kicking = p.action === 'shot' || p.action === 'pass' || p.action === 'cross';
     e.sliding = !!p.sliding;

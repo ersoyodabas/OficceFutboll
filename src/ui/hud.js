@@ -1,7 +1,12 @@
+import { clubIdentity, getClub } from '../../shared/clubs.js';
 import { formatClock } from './matchTimer.js';
+import { createClubBadge } from './clubBadge.js';
 import { createCountdown } from './countdown.js';
 import { keyLabel } from './settings.js';
+import { createGoalPresentation } from './goalPresentation.js';
+import { isMatchPhase } from '../../shared/matchPhases.js';
 export function createUI({ state, canvas, onClearInput, onLeaveMatch, preferences }) {
+const goalPresentation = createGoalPresentation();
 const $ = (id) => document.getElementById(id);
 
 const hud = $('hud');
@@ -12,6 +17,7 @@ const myFlagBlue = $('myFlagBlue');
 const myFlagRed = $('myFlagRed');
 const matchClockEl = $('matchClock');
 const posLabelEl = $('posLabel');
+const crests = { blue: createClubBadge($('crestBlue')), red: createClubBadge($('crestRed')) };
 
 const connectOverlay = $('connectOverlay');
 const lobbyOverlay = $('lobbyOverlay');
@@ -37,8 +43,6 @@ const endScoreEl = $('endScore');
 const disconnectMsg = $('disconnectMsg');
 const reconnectBtn = $('reconnectBtn');
 
-const copyInviteLinkBtn = $('copyInviteLinkBtn');
-const inviteLinkStatus = $('inviteLinkStatus');
 const lobbyMusicQuickVolume = $('lobbyMusicQuickVolume');
 const lobbyLogo = $('lobbyLogo');
 const chatPanel = $('chatPanel');
@@ -52,22 +56,24 @@ const countdownNumber = $('countdownNumber');
 const countdownSub = $('countdownSub');
 const { showCountdownOverlay, hideCountdownOverlay } = createCountdown({ countdownOverlay, countdownNumber, countdownSub });
 function showOverlay(el) {
+  if (el !== lobbyOverlay) for (const id of ['profileDialog', 'clubDialog']) { const dialog = $(id); if (dialog.open) dialog.close(); }
+  if (el) goalPresentation.hide();
   setMatchMenu(false);
   settingsOverlay.hidden = true;
   [connectOverlay, lobbyOverlay, endOverlay, disconnectOverlay].forEach((o) => { o.hidden = (o !== el); });
 }
-function updateConnectionStatus(state, detail) {
+function updateConnectionStatus(state) {
   connStatus.classList.remove('error', 'success');
   switch (state) {
     case 'connecting':
       connStatus.textContent = 'Bağlanıyor…';
       break;
     case 'connected':
-      connStatus.textContent = detail ? `Bağlandı — ${detail}` : 'Bağlandı';
+      connStatus.textContent = 'Bağlandı';
       connStatus.classList.add('success');
       break;
     case 'failed':
-      connStatus.textContent = 'Sunucuya bağlanılamadı. Adresi kontrol et.';
+      connStatus.textContent = 'Sunucuya bağlanılamadı.';
       connStatus.classList.add('error');
       break;
     case 'disconnected':
@@ -79,7 +85,7 @@ function updateConnectionStatus(state, detail) {
   }
 }
 function setMatchMenu(open) {
-  if (open && (state.phase !== 'playing' || state.waitingInLobby || !state.joined)) return;
+  if (open && (!isMatchPhase(state.phase) || state.waitingInLobby || !state.joined)) return;
   const wasOpen = !matchMenu.hidden;
   matchMenu.hidden = !open;
   hud.inert = open;
@@ -98,6 +104,15 @@ leaveMatchBtn.addEventListener('click', () => {
 });
 
 function applyStateHUD(msg) {
+  for (const team of ['blue', 'red']) {
+    const identity = clubIdentity(msg.teams?.[team] || state.teams?.[team]);
+    if (!identity) continue;
+    const suffix = team === 'blue' ? 'Blue' : 'Red';
+    $('scoreName' + suffix).textContent = identity.initials;
+    $('menuName' + suffix).textContent = identity.name;
+    $('scoreName' + suffix).parentElement.title = identity.name;
+    crests[team](getClub(identity.clubId));
+  }
   scoreBlueEl.textContent = msg.score.blue;
   scoreRedEl.textContent = msg.score.red;
   if (!matchMenu.hidden) $('menuScore').textContent = `${msg.score.blue} : ${msg.score.red}`;
@@ -109,7 +124,13 @@ function applyStateHUD(msg) {
 
 
 }
-function updateClock() { if (state.serverMatchStartedAt > 0) matchClockEl.textContent = formatClock(Date.now() - state.serverMatchStartedAt); }
+// Counts down to the server's match end; the server ends the match with the current score at 00:00.
+function updateClock() {
+  if (!(state.serverMatchEndsAt > 0)) return;
+  const remaining = state.serverMatchEndsAt - (Date.now() + state.serverClockOffset);
+  matchClockEl.textContent = formatClock(Math.ceil(Math.max(0, remaining) / 1000) * 1000);
+  matchClockEl.classList.toggle('low', remaining <= 30000);
+}
 function updateControlHint(value = preferences.get()) {
   hint.replaceChildren();
   const fragment = document.createDocumentFragment();
@@ -136,5 +157,5 @@ function showMatchEnd(msg) {
     showOverlay(endOverlay);
     hud.hidden = true; hint.hidden = true;
 }
-return { showMatchEnd, dom: { $, hud, hint, scoreBlueEl, scoreRedEl, myFlagBlue, myFlagRed, matchClockEl, posLabelEl, connectOverlay, lobbyOverlay, endOverlay, disconnectOverlay, matchMenu, resumeBtn, leaveMatchBtn, serverInput, nameInput, connectBtn, connStatus, lobbyStatus, slotStatus, readyBtn, readyProgress, endResultEl, endScoreEl, disconnectMsg, reconnectBtn, copyInviteLinkBtn, inviteLinkStatus, lobbyLogo, countdownOverlay, countdownNumber, countdownSub, chatPanel, chatToggleBtn, chatMessages, chatForm, chatInput }, showOverlay, updateConnectionStatus, setMatchMenu, showCountdownOverlay, hideCountdownOverlay, applyStateHUD, updateClock };
+return { goalPresentation, showMatchEnd, dom: { $, hud, hint, scoreBlueEl, scoreRedEl, myFlagBlue, myFlagRed, matchClockEl, posLabelEl, connectOverlay, lobbyOverlay, endOverlay, disconnectOverlay, matchMenu, resumeBtn, leaveMatchBtn, serverInput, nameInput, connectBtn, connStatus, lobbyStatus, slotStatus, readyBtn, readyProgress, endResultEl, endScoreEl, disconnectMsg, reconnectBtn, lobbyLogo, countdownOverlay, countdownNumber, countdownSub, chatPanel, chatToggleBtn, chatMessages, chatForm, chatInput }, showOverlay, updateConnectionStatus, setMatchMenu, showCountdownOverlay, hideCountdownOverlay, applyStateHUD, updateClock };
 }

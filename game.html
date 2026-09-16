@@ -5,26 +5,18 @@
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Ofis Futbolu 3D</title>
 <link rel="stylesheet" href="src/ui/styles.css" />
+  <link rel="stylesheet" href="src/ui/goalPresentation.css">
 </head>
 <body>
   <div id="app">
     <div id="hud" hidden>
       <div id="scoreBug">
-        <div class="clock" id="matchClock">0:00</div>
-        <div class="teamblock blue"><span class="dot"></span>MAV<span id="myFlagBlue" class="myflag" hidden>SEN</span></div>
-        <div class="scorenum" id="scoreBlue">0</div>
-        <div class="scorenum" id="scoreRed">0</div>
-        <div class="teamblock red">KRM<span id="myFlagRed" class="myflag" hidden>SEN</span><span class="dot"></span></div>
-      </div>
-      <div id="channelBug">
-        <span class="live-dot"></span>
-        <span class="live-text">CANLI</span>
-        <span class="chan-sep"></span>
-        <svg class="trt-logo" width="36" height="24" viewBox="0 0 36 24" xmlns="http://www.w3.org/2000/svg">
-          <!-- TRT1 Logo Style -->
-          <rect width="36" height="24" fill="#C60C30"/>
-          <text x="18" y="17" font-size="14" font-weight="bold" fill="white" text-anchor="middle" font-family="Arial">TRT1</text>
-        </svg>
+        <div class="score-row">
+          <div class="teamblock blue"><span class="team-crest" id="crestBlue" aria-hidden="true"></span><span class="team-short" id="scoreNameBlue">EV</span><span id="myFlagBlue" class="myflag" hidden>SEN</span></div>
+          <div class="score-box"><span class="scorenum" id="scoreBlue">0</span><span class="score-sep" aria-hidden="true">-</span><span class="scorenum" id="scoreRed">0</span></div>
+          <div class="teamblock red"><span class="team-short" id="scoreNameRed">DEP</span><span id="myFlagRed" class="myflag" hidden>SEN</span><span class="team-crest" id="crestRed" aria-hidden="true"></span></div>
+        </div>
+        <div class="clock" id="matchClock" role="timer" aria-label="Kalan süre">05:00</div>
       </div>
       <div id="posLabel"></div>
       <button class="secondary" id="menuBtn" type="button" aria-haspopup="dialog">ESC · Menü</button>
@@ -38,14 +30,10 @@
     <div class="overlay" id="connectOverlay">
       <h1>🏢⚽ Ofis Futbolu 3D</h1>
       <p id="inviteNote" hidden></p>
-      <p>Şirket içi ağdaki sunucuya bağlan, takımını ve mevkini seç.</p>
+      <p>Oyuncu Adını Gir</p>
+      <input id="serverInput" type="hidden" value="ws://10.17.12.93:3000" />
       <div class="field">
-        <label for="serverInput">Sunucu adresi (IP:port)</label>
-        <input id="serverInput" type="text" placeholder="192.168.1.50:3000" value="ws://10.17.12.93:3000" autocomplete="off" />
-      </div>
-      <div class="field">
-        <label for="nameInput">Adın</label>
-        <input id="nameInput" type="text" placeholder="Adını yaz" maxlength="20" autocomplete="off" />
+        <input id="nameInput" type="text" placeholder="Adını yaz" maxlength="20" autocomplete="off" aria-label="Oyuncu adı" />
       </div>
       <button class="primary" id="connectBtn">Bağlan</button>
       <p id="connStatus"></p>
@@ -54,48 +42,73 @@
     <div class="overlay" id="lobbyOverlay" hidden>
       <div class="lobby-shell">
         <header class="lobby-header">
-          <div><span class="eyebrow" id="lobbyLogo" role="button" tabindex="0" aria-label="Ofis Futbolu logosu">OFİS FUTBOLU / 5'E 5</span><h1>Sahada yerini al.</h1><p>Boş bir yere tıkla, takımına katıl ve hazır ol.</p></div>
-          <div class="invite-area"><button class="secondary" id="copyInviteLinkBtn" type="button">📣 Arkadaşını davet et</button><div class="lobby-music-control"><label for="lobbyMusicQuickVolume">🎵 Müzik</label><input id="lobbyMusicQuickVolume" type="range" min="0" max="1" step="0.01" value="0.5" aria-label="Lobi müziği seviyesi" /></div><button class="secondary" id="lobbySettingsBtn" type="button" data-open-settings aria-haspopup="dialog">Ayarlar</button><p id="inviteLinkStatus" role="status"></p></div>
+          <h1 class="lobby-brand"><span id="lobbyLogo" role="button" tabindex="0" aria-label="Ofis Futbolu logosu">OFİS FUTBOLU</span><small>5'E 5</small></h1>
+          <div class="lobby-tools">
+            <div class="lobby-music-control"><label for="lobbyMusicQuickVolume">🎵</label><input id="lobbyMusicQuickVolume" type="range" min="0" max="1" step="0.01" value="0.5" aria-label="Lobi müziği seviyesi" /></div>
+            <button class="secondary" id="lobbySettingsBtn" type="button" data-open-settings aria-haspopup="dialog">Ayarlar</button>
+            <button class="secondary" id="profileBtn" type="button" aria-haspopup="dialog">Profil</button>
+          </div>
         </header>
+        <div id="clubSides" class="club-sides" aria-label="Kulüpler ve formalar"></div>
         <div class="lobby-main">
           <section class="pitch-panel" aria-label="Takım ve oyuncu seçimi">
-            <div class="pitch-header">
-              <div class="pitch-team">MAVİ TAKIM <span class="team-count" id="blueRosterCount">0 / 5</span></div>
-              <span id="lobbyPlayerCount">0 oyuncu</span>
-              <div class="pitch-team red"><span class="team-count" id="redRosterCount">0 / 5</span> KIRMIZI TAKIM</div>
-            </div>
-            <div class="pitch-scroll"><div id="lobbyPitch"><div id="pitchSlots" role="group" aria-label="Sahadaki oyuncu yerleri"></div></div></div>
-            <div class="pitch-caption"><p>Her yarıda kaleci dahil 5 oyuncu.</p><p>⬤ Boş yer &nbsp; • &nbsp; Sarı halka sensin &nbsp; • &nbsp; ✔ Hazır</p></div>
+            <div id="lobbyPitch"><div id="pitchSlots" role="group" aria-label="Sahadaki oyuncu yerleri"></div></div>
+            <p id="slotStatus" role="status" aria-live="polite"></p>
           </section>
-          <section class="chat-panel" id="chatPanel" aria-label="Lobi sohbeti">
-            <div class="chat-header">
-              <h2>Sohbet</h2>
-              <button class="secondary chat-toggle" id="chatToggleBtn" type="button" aria-expanded="true" aria-label="Sohbeti daralt/genişlet">▾</button>
-            </div>
-            <div class="chat-body">
-              <div class="chat-messages" id="chatMessages" role="log" aria-live="polite"></div>
-              <form class="chat-form" id="chatForm">
-                <input id="chatInput" type="text" placeholder="Mesaj yaz…" maxlength="200" autocomplete="off" aria-label="Sohbet mesajı" />
-                <button class="primary" type="submit">Gönder</button>
-              </form>
-            </div>
-          </section>
+          <aside class="lobby-side">
+            <section class="roster-panel" aria-labelledby="rosterTitle">
+              <div class="side-heading"><h2 id="rosterTitle">Oyuncular</h2><span id="lobbyPlayerCount">0 oyuncu</span></div>
+              <ul id="readyRoster" class="ready-roster" aria-label="Oyuncular ve hazır durumları"></ul>
+            </section>
+            <section class="chat-panel" id="chatPanel" aria-label="Lobi sohbeti">
+              <div class="side-heading chat-header">
+                <h2>Sohbet</h2>
+                <button class="chat-toggle" id="chatToggleBtn" type="button" aria-expanded="true" aria-label="Sohbeti daralt/genişlet">▾</button>
+              </div>
+              <div class="chat-body">
+                <div class="chat-messages" id="chatMessages" role="log" aria-live="polite"></div>
+                <form class="chat-form" id="chatForm">
+                  <input id="chatInput" type="text" placeholder="Mesaj yaz…" maxlength="200" autocomplete="off" aria-label="Sohbet mesajı" />
+                  <button class="secondary" type="submit">Gönder</button>
+                </form>
+              </div>
+            </section>
+          </aside>
         </div>
-        <p id="slotStatus" role="status" aria-live="polite"></p>
         <footer class="lobby-footer">
           <div class="lobby-player"><div class="profile-avatar" id="profileAvatar" aria-hidden="true">O</div><div><strong id="profileName">Oyuncu</strong><span id="profileRole">Sahada bir yer seç</span></div></div>
-          <div class="ready-info"><p id="lobbyStatus" role="status">Takımına katılmak için boş bir yere tıkla.</p><p id="readyProgress"></p><div class="ready-meter" aria-hidden="true"><span id="readyMeterFill"></span></div></div>
+          <div class="ready-info"><p id="lobbyStatus" role="status">Takımına katılmak için boş bir yere tıkla.</p><div class="ready-progress"><div class="ready-meter" aria-hidden="true"><span id="readyMeterFill"></span></div><p id="readyProgress"></p></div></div>
           <button class="primary" id="readyBtn" type="button" disabled>HAZIRIM</button>
         </footer>
       </div>
     </div>
 
+    <dialog id="clubDialog" aria-labelledby="clubDialogTitle">
+      <div class="settings-heading"><div><span class="eyebrow">TAKIM KİMLİĞİ</span><h1 id="clubDialogTitle">Kulübünü seç</h1></div><button id="clubCloseBtn" class="secondary" type="button">Kapat</button></div>
+      <div class="club-filters"><label>Kulüp ara<input id="clubSearch" type="search" placeholder="Kulüp adı…" /></label><label>Ülke<select id="clubCountry"><option value="">Tüm ülkeler</option></select></label></div>
+      <p id="clubResults"></p>
+      <div class="club-carousel"><button id="clubPreviousBtn" class="secondary" type="button" aria-label="Önceki kulüp">‹</button>
+      <div id="clubCandidate"><div id="clubCandidateBadge"></div><h2 id="clubCandidateName"></h2><p id="clubCandidateCountry"></p><canvas id="clubKitPreview" width="240" height="240" role="img"></canvas></div>
+      <button id="clubNextBtn" class="secondary" type="button" aria-label="Sonraki kulüp">›</button></div>
+      <div id="clubKitTabs" class="club-kit-tabs" role="group" aria-label="Forma türü"><button class="secondary" type="button" data-kit="home">İç saha</button><button class="secondary" type="button" data-kit="away">Deplasman</button><button class="secondary" type="button" data-kit="third">Alternatif</button></div>
+      <p id="clubSelectionStatus" role="status" aria-live="polite"></p><button id="clubConfirmBtn" class="primary" type="button">Seçimi onayla</button>
+    </dialog>
+    <dialog id="profileDialog" aria-labelledby="profileTitle" aria-describedby="profileHelp">
+      <form id="profileForm" novalidate>
+        <span class="eyebrow">OYUNCU PROFİLİ</span><h1 id="profileTitle">Adını düzenle</h1>
+        <p id="profileHelp">Yeni adın lobideki herkese görünür ve bu cihazda saklanır.</p>
+        <label for="profileNameInput">Oyuncu adı</label>
+        <input id="profileNameInput" type="text" maxlength="20" autocomplete="nickname" aria-describedby="profileStatus" />
+        <p id="profileStatus" role="status" aria-live="polite"></p>
+        <div class="profile-actions"><button id="profileCancelBtn" class="secondary" type="button">Vazgeç</button><button id="profileSaveBtn" class="primary" type="submit">Kaydet</button></div>
+      </form>
+    </dialog>
     <div class="overlay" id="matchMenu" role="dialog" aria-modal="true" aria-labelledby="menuTitle" aria-describedby="menuDescription" hidden>
       <div class="menu-card">
         <span class="eyebrow">OFİS FUTBOLU / MAÇ MENÜSÜ</span>
         <h1 id="menuTitle">Oyun menüsü</h1>
         <p id="menuDescription">Menü açıkken oyuncun bekler. Çevrim içi maç devam eder.</p>
-        <div class="menu-score"><span class="blue">MAVİ</span><strong id="menuScore">0 : 0</strong><span class="red">KIRMIZI</span></div>
+        <div class="menu-score"><span class="blue" id="menuNameBlue">EV</span><strong id="menuScore">0 : 0</strong><span class="red" id="menuNameRed">DEP</span></div>
         <button class="primary" id="resumeBtn" type="button">Oyuna devam et</button>
         <button class="secondary" id="matchSettingsBtn" type="button" data-open-settings aria-haspopup="dialog">Ses ve tuş ayarları</button>
         <button class="secondary" id="leaveMatchBtn" type="button">Maçtan çık · Lobiye dön</button>

@@ -1,4 +1,3 @@
-import { DEFAULT_SERVER_URL, SERVER_STORAGE_KEY } from '../core/config.js';
 import { normalizeServerUrl } from './urls.js';
 
 // Transport owns the socket. Presentation and session transitions are callbacks.
@@ -16,8 +15,8 @@ export function createWebSocketClient({ getConnection, onStatus, onMessage, onCl
 
   function connect() {
     if (connecting) return;
-    const { name, serverUrl: input } = getConnection();
-    const serverUrl = normalizeServerUrl(input || DEFAULT_SERVER_URL);
+    const { serverUrl: input } = getConnection();
+    const serverUrl = normalizeServerUrl(input);
     dispose();
     connecting = true;
     onStatus('connecting', serverUrl);
@@ -31,10 +30,6 @@ export function createWebSocketClient({ getConnection, onStatus, onMessage, onCl
     ws.onopen = () => {
       connecting = false;
       onStatus('connected', serverUrl);
-      try {
-        localStorage.setItem(SERVER_STORAGE_KEY, serverUrl);
-        localStorage.setItem('officeFootballPlayerName', name || 'Oyuncu');
-      } catch { /* Storage may be disabled. */ }
     };
     ws.onmessage = (event) => {
       let message;

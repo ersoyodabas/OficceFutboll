@@ -4,10 +4,9 @@ import { THREE } from '../engine/three.js';
     stadium.name = 'Stadium';
     scene.add(stadium);
     const { HALF_W: hw, HALF_L: hl } = field;
-    const dark = new THREE.MeshStandardMaterial({ color: 0x172631, roughness: 0.9 });
-    const concrete = new THREE.MeshStandardMaterial({ color: 0x6d7980, roughness: 0.94 });
+    const dark = new THREE.MeshStandardMaterial({ color: 0x0e1614, roughness: 0.9 });
+    const concrete = new THREE.MeshStandardMaterial({ color: 0x2b3232, roughness: 0.94 });
     const rail = new THREE.MeshStandardMaterial({ color: 0xd2dbdf, metalness: 0.45, roughness: 0.45 });
-    const turf = new THREE.MeshStandardMaterial({ color: 0x285b36, roughness: 1 });
 
     function box(group, w, h, d, x, y, z, material) {
       const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), material);
@@ -17,62 +16,50 @@ import { THREE } from '../engine/three.js';
       return mesh;
     }
 
+    // Stadium floor under the grass run-off (the turf itself comes from world/field.js).
     const runoff = new THREE.Group();
     runoff.name = 'Runoff';
     stadium.add(runoff);
-    const apron = new THREE.Mesh(new THREE.PlaneGeometry(hw * 2 + 15, hl * 2 + 15), turf);
-    apron.rotation.x = -Math.PI / 2;
-    apron.position.y = -0.012;
-    apron.receiveShadow = true;
-    runoff.add(apron);
-    box(runoff, hw * 2 + 18, 0.28, hl * 2 + 18, 0, -0.2, 0, concrete);
-    const track = new THREE.Mesh(new THREE.RingGeometry(1, 1.04, 4), dark);
-    track.rotation.x = -Math.PI / 2;
-    track.scale.set(hw + 8, hl + 8, 1);
-    track.position.y = -0.005;
-    runoff.add(track);
+    box(runoff, hw * 2 + 40, 0.28, hl * 2 + 40, 0, -0.2, 0, concrete);
 
-    function adTexture(label, background) {
+    // Bright green LED boards, as in Rush broadcasts.
+    function adTexture(label) {
       const canvas = document.createElement('canvas');
-      canvas.width = 512; canvas.height = 96;
+      canvas.width = 1024; canvas.height = 128;
       const ctx = canvas.getContext('2d');
-      ctx.fillStyle = background; ctx.fillRect(0, 0, 512, 96);
-      ctx.fillStyle = '#60ed83'; ctx.fillRect(0, 0, 9, 96);
-      ctx.fillStyle = '#ffffff'; ctx.font = 'bold 38px Arial';
+      const gradient = ctx.createLinearGradient(0, 0, 0, 128);
+      gradient.addColorStop(0, '#2ff29c'); gradient.addColorStop(1, '#16c77c');
+      ctx.fillStyle = gradient; ctx.fillRect(0, 0, 1024, 128);
+      ctx.fillStyle = '#ffffff'; ctx.font = '900 64px "Segoe UI", Arial, sans-serif';
       ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-      ctx.fillText(label, 256, 48);
+      ctx.fillText(label, 512, 68);
       const texture = new THREE.CanvasTexture(canvas);
       texture.colorSpace = THREE.SRGBColorSpace;
+      texture.anisotropy = 4;
       return texture;
     }
-    const slogans = [
-      adTexture('OFFICE FUTBOLL', '#102a24'),
-      adTexture('PLAY TOGETHER', '#132c42'),
-      adTexture('MATCH DAY', '#3b2031'),
-      adTexture('MORE THAN A GAME', '#263d22'),
-    ];
+    const slogans = [adTexture('⚽ @OFFICEFUTBOLL'), adTexture('OFFICE FUTBOLL · RUSH')];
     const advertising = new THREE.Group();
     advertising.name = 'AdvertisingBoards';
     stadium.add(advertising);
-    const panelW = 7.6;
+    const panelW = 10;
     function panel(x, z, rotation, index) {
-      const texture = slogans[((index % slogans.length) + slogans.length) % slogans.length];
       const panel = new THREE.Mesh(
-        new THREE.PlaneGeometry(panelW, 1.15),
-        new THREE.MeshBasicMaterial({ map: texture, side: THREE.DoubleSide })
+        new THREE.PlaneGeometry(panelW, 1),
+        new THREE.MeshBasicMaterial({ map: slogans[index % slogans.length], toneMapped: false })
       );
-      panel.position.set(x, 0.68, z);
+      panel.position.set(x, 0.6, z);
       panel.rotation.y = rotation;
       advertising.add(panel);
-      box(advertising, panelW, 0.09, 0.13, x, 0.08, z, dark);
+      const backing = box(advertising, panelW, 1.1, 0.12, x - Math.sin(rotation) * .07, 0.55, z - Math.cos(rotation) * .07, dark);
+      backing.rotation.y = rotation;
     }
-    for (let z = -hl + 4; z <= hl - 4; z += panelW) {
-      panel(-hw - 2.8, z, Math.PI / 2, Math.round(z));
-      panel(hw + 2.8, z, Math.PI / 2, Math.round(z + 1));
-    }
-    for (let x = -hw + 4; x <= hw - 4; x += panelW) {
-      panel(x, -hl - 2.8, 0, Math.round(x));
-      panel(x, hl + 2.8, 0, Math.round(x + 1));
+    // Only the far touchline and the goal ends: the camera sits behind the near side.
+    let index = 0;
+    for (let z = -hl - 2; z <= hl + 2; z += panelW) panel(-hw - 3.5, z + panelW / 2, Math.PI / 2, index++);
+    for (let x = -hw; x <= hw; x += panelW) {
+      panel(x + panelW / 2, -hl - 4.5, 0, index++);
+      panel(x + panelW / 2, hl + 4.5, Math.PI, index++);
     }
 
     const seating = new THREE.Group();
@@ -93,7 +80,7 @@ import { THREE } from '../engine/three.js';
       const group = new THREE.Group();
       group.name = name;
       seating.add(group);
-      const base = isSide ? hw + 5.8 : hl + 5.8;
+      const base = isSide ? hw + 8 : hl + 5.8;
       const span = halfLength * 2 + 9;
       const rows = 11;
       const peoplePerRow = Math.floor(span / 1.05);
@@ -138,24 +125,21 @@ import { THREE } from '../engine/three.js';
         isSide ? 0 : sign * (back - 1.6), concrete);
       return group;
     }
+    // No near-side stand: it would sit between the broadcast camera and the pitch.
     stand('FarStand', true, -1, hl);
-    stand('NearStand', true, 1, hl);
     stand('NorthStand', false, -1, hw);
     stand('SouthStand', false, 1, hw);
 
     const technical = new THREE.Group();
     technical.name = 'TechnicalArea';
     stadium.add(technical);
-    const benchX = hw + 4.1;
+    const benchX = -hw - 5.5;
     for (const z of [-9, 9]) {
       box(technical, 2.5, 0.13, 7.4, benchX, 0.45, z, rail);
-      box(technical, 2.5, 1.8, 0.12, benchX + 1.1, 1.35, z, concrete);
       for (let i = -2; i <= 2; i++) {
         box(technical, 0.8, 0.12, 0.7, benchX, 0.55, z + i * 1.25, seatMaterials[0]);
       }
     }
-    box(technical, 2.3, 4.2, 7.5, -hw - 11, 2.15, 0, dark); // tunnel mouth
-    box(technical, 0.1, 3.4, 5.5, -hw - 9.8, 1.75, 0, concrete);
 
     const towers = new THREE.Group();
     towers.name = 'Floodlights';

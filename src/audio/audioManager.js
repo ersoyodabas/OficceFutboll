@@ -69,8 +69,10 @@ export function createAudioManager({ events, preferences, audioContextFactory = 
   }
   function stopLobbyTheme() { if (!playing) return; playing = false; element.pause(); }
   function playSfx(type) {
-    const audioContext = ensureContext();
-    const buffer = sfxBuffers[type];
+    let audioContext;
+    try { audioContext = ensureContext(); } catch { return; }
+    const cue = type === 'kickoff' ? 'whistle' : type;
+    const buffer = sfxBuffers?.[cue];
     if (!buffer) return;
     const play = () => {
       const source = audioContext.createBufferSource();

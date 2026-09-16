@@ -30,6 +30,11 @@ function placeAllPlayers() {
     c.slideDirection = null;
     c.recoveryRemaining = 0;
     c.keeperPossessionStartedAt = 0;
+    c.input = { x: 0, z: 0, sprint: false };
+    c.facing = { x: 0, z: c.team === 'blue' ? -1 : 1 };
+    c.cooldowns = { A: 0, S: 0, D: 0 };
+    c.standingActive = 0;
+    c.lastAction = null;
   }
 }
 function allowedRange(c) {

@@ -3,6 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "start": "npm --prefix server start",
     "test": "npm --prefix server test",
     "check": "node scripts/check-modules.js",
     "test:browser": "node scripts/browser-smoke.js"

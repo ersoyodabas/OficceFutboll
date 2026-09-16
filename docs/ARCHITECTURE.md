@@ -83,3 +83,18 @@ model assets are currently present.
 `manifest.json`, `game.html`, `src/core/game.js`, `src/core/config.js`,
 `src/network/protocol.js` and `server/core/server.js` require focused changes
 and review from the relevant owner. See `TEAM_OWNERSHIP.md`.
+
+## Goal presentation
+
+`matchManager` owns score mutation and the `goalCelebration`/`kickoff` phases;
+`simulation` retains goal-opening detection. `ballTouches` records server-side
+control, actions and contacts, and `snapshot` constructs one common world payload
+for periodic state, goal and kickoff messages. The existing server tick advances
+absolute deadlines; no per-goal timeout is allocated.
+
+`shared/teams.js` provides presentation metadata and `assets/teams/` contains
+original SVG badges. `src/network/goalSequence.js` deduplicates and coordinates
+presentation from authoritative messages. `src/ui/goalPresentation.js` and its
+stylesheet own a reusable overlay, cached images and fallback initials. The
+existing camera has goal and kickoff modes. Audio uses the existing cached goal
+and whistle clips; crowd/presentation cue names are optional and safely absent.

@@ -6,8 +6,9 @@ import { createActions } from '../gameplay/actions.js';
 import { buildWorld, createBallPhysics } from '../gameplay/ballPhysics.js';
 import { createMatchManager } from '../gameplay/matchManager.js';
 import { createSimulation } from '../gameplay/simulation.js';
-import { BALL_R, HALF_W, HALF_L, GOAL_HALF_W } from '../../shared/field.js';
-import { PLAYER_SPEED, MATCH_DURATION_SECONDS, MATCH_END_PAUSE_SECONDS } from '../core/config.js';
+import { recordBallTouch } from '../gameplay/ballTouches.js';
+import { BALL_R, HALF_W, HALF_L, GOAL_HALF_W, FIELD } from '../../shared/field.js';
+import { PLAYER_SPEED, MATCH_DURATION_SECONDS, MATCH_END_PAUSE_SECONDS, GOAL_PAUSE_SECONDS, KICKOFF_PAUSE_SECONDS } from '../core/config.js';
 
 function fixture(t) {
   let now = 100000;
@@ -183,18 +184,22 @@ test('physics, crossbar filtering, goals, winning score and lobby reset remain a
   state.ballBody.velocity.set(0, 0, 0);
   advance();
   assert.deepEqual(state.score, { blue: 1, red: 0 });
-  assert.ok(state.goalPauseRemaining > 0);
-  assert.equal(state.ballOwnerId, null);
+  assert.equal(state.phase, 'goalCelebration');
+  advance(GOAL_PAUSE_SECONDS * 1000);
+  assert.equal(state.phase, 'kickoff');
+  assert.equal(state.ballOwnerId, 'red');
   assert.deepEqual(
     [state.ballBody.position.x, state.ballBody.position.y, state.ballBody.position.z],
     [0, BALL_R, 0],
     'ball restarts exactly on the centre spot after a goal',
   );
-  state.goalPauseRemaining = 0;
+  advance(KICKOFF_PAUSE_SECONDS * 1000);
   state.score.blue = 4;
   moveKeepersAway();
   state.ballBody.position.set(0, BALL_R, -HALF_L - .5);
   advance();
+  assert.equal(state.phase, 'goalCelebration');
+  advance(GOAL_PAUSE_SECONDS * 1000);
   assert.equal(state.phase, 'ended');
   assert.deepEqual(messages.findLast((m) => m.type === 'match_end'), { type: 'match_end', score: { blue: 5, red: 0 }, winner: 'blue' });
   assert.equal(state.ballBody, null);
@@ -215,4 +220,101 @@ test('match timestamps and timed end use server wall clock', (t) => {
   advance(MATCH_DURATION_SECONDS * 1000);
   assert.equal(state.phase, 'ended');
   assert.ok(messages.some((m) => m.type === 'match_end'));
+});
+
+test('goal sequence freezes actions, credits server touches and resets once at the deadline', (t) => {
+  const { state, actions, match, advance, messages } = fixture(t);
+  const attacker = state.clients.get('blue'), defender = state.clients.get('red');
+  state.ballBody.position.set(attacker.pos.x, BALL_R, attacker.pos.z);
+  state.ballOwnerId = attacker.id;
+  actions.performAction(attacker, 'S');
+  recordBallTouch(state, defender); // A defensive deflection must not replace the attacking scorer.
+  const startedAt = state.matchStartedAt, endsAt = state.matchEndsAt;
+  assert.equal(match.confirmGoal('blue'), true);
+  assert.equal(match.confirmGoal('blue'), false);
+  assert.equal(match.confirmGoal('red'), false);
+  const goal = messages.find((m) => m.type === 'goal');
+  assert.equal(goal.goalEvent.scorerId, 'blue');
+  assert.equal(goal.goalEvent.scorerName, 'blue');
+  assert.equal(goal.goalEvent.teamId, 'blue');
+  assert.deepEqual(goal.score, { blue: 1, red: 0 });
+  assert.equal(goal.phase, 'goalCelebration');
+  const frozen = state.ballBody.position.clone(), frozenPlayers = [...state.clients.values()].map((c) => ({ ...c.pos }));
+  const count = messages.filter((m) => m.type === 'actionResult').length;
+  for (const key of ['A', 'S', 'D']) actions.performAction(attacker, key);
+  advance(3999);
+  assert.equal(state.phase, 'goalCelebration');
+  assert.deepEqual(state.ballBody.position, frozen);
+  assert.deepEqual([...state.clients.values()].map((c) => c.pos), frozenPlayers);
+  assert.equal(messages.filter((m) => m.type === 'actionResult').length, count);
+  const snapshot = messages.findLast((m) => m.type === 'state');
+  assert.equal(snapshot.goalEvent.id, goal.goalEvent.id);
+  assert.equal(snapshot.phase, 'goalCelebration');
+  advance(1);
+  assert.equal(state.phase, 'kickoff');
+  assert.equal(state.pendingServe, 'red');
+  assert.equal(state.ballOwnerId, defender.id);
+  assert.deepEqual([state.ballBody.position.x, state.ballBody.position.y, state.ballBody.position.z], [0, BALL_R, 0]);
+  assert.equal(state.ballBody.velocity.length(), 0);
+  assert.equal(state.ballBody.angularVelocity.length(), 0);
+  assert.deepEqual(attacker.pos, { x: FIELD.LOBBY_SLOTS[4].x, z: FIELD.LOBBY_SLOTS[4].z });
+  assert.deepEqual(defender.pos, { x: 0, z: -.86 });
+  for (const c of state.clients.values()) {
+    assert.deepEqual(c.input, { x: 0, z: 0, sprint: false });
+    assert.deepEqual(c.vel, { x: 0, z: 0 });
+    assert.equal(c.slideRemaining, 0); assert.equal(c.standingActive, 0);
+    assert.equal(c.lastAction, null); assert.deepEqual(c.cooldowns, { A: 0, S: 0, D: 0 });
+  }
+  assert.equal(state.matchStartedAt, startedAt); assert.equal(state.matchEndsAt, endsAt);
+  actions.performAction(defender, 'S');
+  assert.equal(state.ballBody.velocity.length(), 0, 'kickoff camera hold also blocks actions');
+  advance(800);
+  assert.equal(state.phase, 'playing');
+  actions.performAction(defender, 'A');
+  assert.equal(messages.at(-1).action, 'pass');
+  assert.equal(messages.filter((m) => m.type === 'kickoffReset').length, 1);
+  assert.equal(messages.filter((m) => m.type === 'goal').length, 1);
+  // Touches from the previous goal are gone; unknown scorer remains null.
+  match.confirmGoal('blue');
+  assert.equal(state.goalEvent.scorerName, null);
+  assert.equal(state.goalEvent.id, goal.goalEvent.id + 1);
+});
+
+test('aborting a celebration cancels it and a new match has no stale touch or phase', (t) => {
+  const { state, match, advance } = fixture(t);
+  match.confirmGoal('red');
+  match.abortMatchToLobby();
+  advance(5000);
+  assert.equal(state.phase, 'lobby');
+  assert.equal(state.goalEvent, null);
+  match.startMatch();
+  assert.equal(state.phase, 'playing');
+  assert.deepEqual(state.lastTouches, { blue: null, red: null });
+});
+
+test('kickoff reassigns a departed taker and solo play can use the conceding AI keeper', (t) => {
+  const { state, match, advance } = fixture(t);
+  match.confirmGoal('blue');
+  advance(4000);
+  assert.equal(state.ballOwnerId, 'red');
+  state.clients.delete('red');
+  advance(800);
+  assert.equal(state.ballOwnerId, 'ai_keeper_red');
+  assert.equal(state.phase, 'playing');
+  assert.equal(state.clients.get('ai_keeper_red').pos.z, -.86);
+  advance(17); advance(520);
+  assert.equal(state.ballOwnerId, null, 'AI takes kickoff and distributes automatically');
+  assert.ok(state.ballBody.velocity.z > 0);
+});
+
+test('opposing possession clears a stale attacker while unknown goals remain safe', (t) => {
+  const { state, actions, match } = fixture(t);
+  recordBallTouch(state, state.clients.get('blue'));
+  const opponent = state.clients.get('red');
+  state.ballBody.position.set(opponent.pos.x, BALL_R, opponent.pos.z);
+  state.ballOwnerId = opponent.id;
+  actions.performAction(opponent, 'A');
+  match.confirmGoal('blue');
+  assert.equal(state.goalEvent.scorerId, null);
+  assert.equal(state.goalEvent.scorerName, null);
 });

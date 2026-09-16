@@ -1,12 +1,13 @@
+import { drawKitFabric } from './kitDesign.js';
 import { TEAM_COLOR, PLAYER_VISUAL_SCALE } from '../core/config.js';
 import { THREE } from '../engine/three.js';
 import { makeCanvasTexture } from '../engine/assetLoader.js';
 export function createPlayerFactory({ scene }) {
-const SKIN_COLOR = 0xe3ab7f;
-const skinMat = new THREE.MeshStandardMaterial({ color: SKIN_COLOR, roughness: 0.7 });
-const hairMat = new THREE.MeshStandardMaterial({ color: 0x2a1c14, roughness: 0.8 });
-const bootMat = new THREE.MeshStandardMaterial({ color: 0x141414, roughness: 0.5 });
-const shortsMat = new THREE.MeshStandardMaterial({ color: 0xf2f2f2, roughness: 0.75 });
+// Shared skin/hair palettes; each footballer picks one deterministically from its number.
+const skinMats = [0xf0c8a4, 0xd9a47c, 0xb27a52, 0x8a5636, 0x5e3a24].map((color) => new THREE.MeshStandardMaterial({ color, roughness: 0.62 }));
+const hairMats = [0x17110c, 0x3a2617, 0x5c3d22, 0x0b0b0b, 0xa47a45].map((color) => new THREE.MeshStandardMaterial({ color, roughness: 0.85 }));
+const bootMat = new THREE.MeshStandardMaterial({ color: 0x141414, roughness: 0.45 });
+const soleMat = new THREE.MeshStandardMaterial({ color: 0xf2f2f2, roughness: 0.6 });
 
 function jerseyTextures(teamHex, number) {
   const teamCss = '#' + teamHex.toString(16).padStart(6, '0');
@@ -61,26 +62,48 @@ function nameSprite(name) {
   return sprite;
 }
 
-function limb(radiusTop, radiusBottom, length, material, segments) {
-  const pivot = new THREE.Group();
-  const mesh = new THREE.Mesh(new THREE.CylinderGeometry(radiusTop, radiusBottom, length, segments || 8), material);
+// Mesh hanging below a joint pivot; `end` is the next joint.
+function segment(parent, mesh, length) {
   mesh.position.y = -length / 2;
   mesh.castShadow = true;
-  pivot.add(mesh);
+  parent.add(mesh);
+}
+function limb(length) {
+  const pivot = new THREE.Group();
   const end = new THREE.Group();
   end.position.y = -length;
   pivot.add(end);
   return { pivot, end };
 }
+// Capsule tapered from rTop to rBottom along its length.
+function taperedCapsule(rTop, rBottom, length, material) {
+  const radius = Math.max(rTop, rBottom);
+  const geometry = new THREE.CapsuleGeometry(radius, Math.max(.01, length - radius * 2), 4, 10);
+  const position = geometry.attributes.position;
+  for (let i = 0; i < position.count; i++) {
+    const t = THREE.MathUtils.clamp(.5 - position.getY(i) / length, 0, 1); // 0 top → 1 bottom
+    const scale = THREE.MathUtils.lerp(rTop, rBottom, t) / radius;
+    position.setX(i, position.getX(i) * scale);
+    position.setZ(i, position.getZ(i) * scale);
+  }
+  geometry.computeVertexNormals();
+  return new THREE.Mesh(geometry, material);
+}
+
+// Anatomical proportions for a ~1.83 m footballer (metres, feet on the ground).
+const BODY = { hipY: .93, thigh: .43, shin: .42, shoulderY: 1.45, shoulderX: .2, upperArm: .3, forearm: .27 };
 
 function createFootballer(team, number, name, isMe, targetScene = scene) {
   const teamHex = TEAM_COLOR[team];
+  const shortsMat = new THREE.MeshStandardMaterial({ color: 0xf2f2f2, roughness: .75 });
   const jersey = jerseyTextures(teamHex, number);
   const jerseyMat = new THREE.MeshStandardMaterial({ map: jersey.front, roughness: 0.75 });
   const jerseyBackMat = new THREE.MeshStandardMaterial({ map: jersey.back, roughness: 0.75 });
   const jerseyPlainMat = new THREE.MeshStandardMaterial({ map: jersey.plain, roughness: 0.75 });
   const sleeveMat = new THREE.MeshStandardMaterial({ color: teamHex, roughness: 0.75 });
   const sockMat = new THREE.MeshStandardMaterial({ color: teamHex, roughness: 0.75 });
+  const skinMat = skinMats[number % skinMats.length];
+  const hairMat = hairMats[(number * 7) % hairMats.length];
 
   // Root owns only world position/yaw. The body is a child so slide pitch is
   // always applied in the footballer's local forward direction, independent
@@ -90,98 +113,121 @@ function createFootballer(team, number, name, isMe, targetScene = scene) {
   root.add(body);
 
   const hips = new THREE.Group();
-  hips.position.y = 0.9;
+  hips.position.y = BODY.hipY;
   body.add(hips);
 
   function makeLeg(sideX) {
     const hip = new THREE.Group();
     hip.position.x = sideX;
-    const thigh = limb(0.1, 0.09, 0.4, shortsMat);
+    const thigh = limb(BODY.thigh);
     hip.add(thigh.pivot);
-    const knee = thigh.end;
-    const shin = limb(0.08, 0.06, 0.42, sockMat);
-    knee.add(shin.pivot);
-    const boot = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.08, 0.24), bootMat);
-    boot.position.set(0, -0.46, 0.05);
-    boot.castShadow = true;
+    // Shorts cover the top of the thigh; the knee and lower thigh are bare.
+    const shortsLeg = new THREE.Mesh(new THREE.CylinderGeometry(.1, .098, .2, 12), shortsMat);
+    shortsLeg.position.y = -.07; shortsLeg.castShadow = true;
+    thigh.pivot.add(shortsLeg);
+    segment(thigh.pivot, taperedCapsule(.082, .058, BODY.thigh, skinMat), BODY.thigh);
+    const shin = limb(BODY.shin);
+    thigh.end.add(shin.pivot);
+    // Socks pulled up to just below the knee, over a slightly fuller calf.
+    const sock = taperedCapsule(.058, .04, BODY.shin * .86, sockMat);
+    sock.position.y = -BODY.shin * .55; sock.castShadow = true;
+    shin.pivot.add(sock);
+    const knee = new THREE.Mesh(new THREE.SphereGeometry(.058, 10, 8), skinMat);
+    shin.pivot.add(knee);
+    const boot = new THREE.Group();
+    boot.position.set(0, -BODY.shin - .02, .045);
+    const upper = new THREE.Mesh(new THREE.CapsuleGeometry(.045, .17, 4, 8), bootMat);
+    upper.rotation.x = Math.PI / 2; upper.scale.set(1.05, 1, .8); upper.castShadow = true;
+    const sole = new THREE.Mesh(new THREE.BoxGeometry(.095, .018, .26), soleMat);
+    sole.position.y = -.04;
+    boot.add(upper, sole);
     shin.pivot.add(boot);
     hips.add(hip);
     return { hip, thigh: thigh.pivot, shin: shin.pivot };
   }
-  const legL = makeLeg(-0.12);
-  const legR = makeLeg(0.12);
+  const legL = makeLeg(-0.1);
+  const legR = makeLeg(0.1);
 
-  const shorts = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.24, 0.3), shortsMat);
-  shorts.position.y = 0.02;
-  shorts.castShadow = true;
+  // Shorts: an oval, slightly flared waistband section.
+  const shorts = new THREE.Mesh(new THREE.CylinderGeometry(.175, .2, .2, 16), shortsMat);
+  shorts.scale.z = .72; shorts.position.y = .03; shorts.castShadow = true;
   hips.add(shorts);
-  [-1, 1].forEach((s) => {
-    const stripe = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.24, 0.31), new THREE.MeshStandardMaterial({ color: teamHex }));
-    stripe.position.set(s * 0.21, 0.02, 0);
-    hips.add(stripe);
-  });
 
-  const torsoGeo = new THREE.BoxGeometry(0.46, 0.54, 0.28);
+  // Torso: V-shaped (broad chest, narrow waist) box so the kit texture keeps its
+  // front/back faces; shoulder caps and a rounded waist hide the hard edges.
+  const torsoGeo = new THREE.BoxGeometry(0.38, 0.46, 0.22, 1, 4, 1);
+  const tp = torsoGeo.attributes.position;
+  for (let i = 0; i < tp.count; i++) {
+    const t = THREE.MathUtils.clamp((tp.getY(i) + .23) / .46, 0, 1); // 0 waist → 1 shoulders
+    tp.setX(i, tp.getX(i) * THREE.MathUtils.lerp(.8, 1.02, Math.pow(t, .8)));
+    tp.setZ(i, tp.getZ(i) * THREE.MathUtils.lerp(.82, 1, Math.sin(t * Math.PI * .65)));
+  }
+  torsoGeo.computeVertexNormals();
   const torso = new THREE.Mesh(torsoGeo, [sleeveMat, sleeveMat, jerseyPlainMat, jerseyPlainMat, jerseyMat, jerseyBackMat]);
-  torso.position.y = 0.27 + 0.12;
+  torso.position.y = 0.33;
   torso.castShadow = true;
   hips.add(torso);
-
-  const shoulderY = 0.9 + 0.27 + 0.12 + 0.22;
+  const waist = new THREE.Mesh(new THREE.CylinderGeometry(.16, .165, .08, 16), jerseyPlainMat);
+  waist.scale.z = .72; waist.position.y = .12;
+  hips.add(waist);
 
   function makeArm(sideX) {
     const shoulder = new THREE.Group();
-    shoulder.position.set(sideX, shoulderY, 0);
-    const upper = limb(0.075, 0.065, 0.3, sleeveMat);
+    shoulder.position.set(sideX, BODY.shoulderY, 0);
+    const cap = new THREE.Mesh(new THREE.SphereGeometry(.075, 12, 10), sleeveMat);
+    cap.scale.set(1, .9, .95); cap.castShadow = true;
+    shoulder.add(cap);
+    const upper = limb(BODY.upperArm);
     shoulder.add(upper.pivot);
-    const elbow = upper.end;
-    const lower = limb(0.06, 0.05, 0.28, skinMat);
-    elbow.add(lower.pivot);
-    const hand = new THREE.Mesh(new THREE.SphereGeometry(0.055, 8, 8), skinMat);
-    hand.position.y = -0.28;
+    const sleeve = new THREE.Mesh(new THREE.CylinderGeometry(.068, .062, .16, 12), sleeveMat);
+    sleeve.position.y = -.07; sleeve.castShadow = true;
+    upper.pivot.add(sleeve);
+    segment(upper.pivot, taperedCapsule(.05, .04, BODY.upperArm, skinMat), BODY.upperArm);
+    const lower = limb(BODY.forearm);
+    upper.end.add(lower.pivot);
+    segment(lower.pivot, taperedCapsule(.042, .032, BODY.forearm, skinMat), BODY.forearm);
+    const hand = new THREE.Mesh(new THREE.SphereGeometry(0.045, 10, 8), skinMat);
+    hand.scale.set(.8, 1.2, .9); hand.position.y = -BODY.forearm - .03;
     lower.pivot.add(hand);
     body.add(shoulder);
     return { shoulder, upper: upper.pivot, lower: lower.pivot };
   }
-  const armL = makeArm(-0.29);
-  const armR = makeArm(0.29);
+  const armL = makeArm(-BODY.shoulderX);
+  const armR = makeArm(BODY.shoulderX);
 
-  const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.07, 0.08, 8), skinMat);
-  neck.position.y = shoulderY + 0.06;
+  const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.06, 0.1, 10), skinMat);
+  neck.position.y = BODY.shoulderY + 0.05;
   body.add(neck);
-  const head = new THREE.Mesh(new THREE.SphereGeometry(0.135, 14, 14), skinMat);
-  head.position.y = shoulderY + 0.06 + 0.16;
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.1, 18, 14), skinMat);
+  head.scale.set(.84, 1.12, .98);
+  head.position.y = BODY.shoulderY + 0.2;
   head.castShadow = true;
   body.add(head);
-  const hair = new THREE.Mesh(new THREE.SphereGeometry(0.14, 14, 10, 0, Math.PI * 2, 0, Math.PI * 0.55), hairMat);
-  hair.position.copy(head.position);
+  const nose = new THREE.Mesh(new THREE.SphereGeometry(.018, 8, 6), skinMat);
+  nose.position.set(0, head.position.y - .01, .098);
+  body.add(nose);
+  const hair = new THREE.Mesh(new THREE.SphereGeometry(0.104, 18, 10, 0, Math.PI * 2, 0, Math.PI * 0.5), hairMat);
+  hair.scale.set(.86, 1.08, 1.02);
+  hair.position.set(0, head.position.y + .012, -.008);
   body.add(hair);
 
-  const ring = new THREE.Mesh(
-    new THREE.RingGeometry(0.45, 0.56, 24),
-    new THREE.MeshBasicMaterial({ color: teamHex, transparent: true, opacity: 0.5, side: THREE.DoubleSide })
-  );
-  ring.rotation.x = -Math.PI / 2;
-  ring.position.y = 0.02;
-  root.add(ring);
-
-  // the wider camera makes it harder to tell who you are — a bright marker
-  // under the controlled player's feet makes them easy to pick out at a glance
+  // A small marker above the controlled player's head (as in TV-style games)
+  // plus a thin ring at the feet keeps them easy to pick out from afar.
   let highlight = null;
   if (isMe) {
     highlight = new THREE.Mesh(
-      new THREE.RingGeometry(0.62, 0.72, 28),
-      new THREE.MeshBasicMaterial({ color: 0xffe066, transparent: true, opacity: 0.85, side: THREE.DoubleSide })
+      new THREE.RingGeometry(0.5, 0.58, 32),
+      new THREE.MeshBasicMaterial({ color: 0xffe066, transparent: true, opacity: 0.7, side: THREE.DoubleSide, depthWrite: false })
     );
     highlight.rotation.x = -Math.PI / 2;
-    highlight.position.y = 0.025;
+    highlight.position.y = 0.02;
     root.add(highlight);
     const marker = new THREE.Mesh(
-      new THREE.ConeGeometry(.18, .28, 3),
-      new THREE.MeshBasicMaterial({ color: 0xffe066, depthTest: false })
+      new THREE.ConeGeometry(.14, .26, 3),
+      new THREE.MeshBasicMaterial({ color: 0xff4d4d, depthTest: false })
     );
     marker.rotation.z = Math.PI;
-    marker.position.y = head.position.y + .48;
+    marker.position.y = head.position.y + .42;
     marker.renderOrder = 12;
     root.add(marker);
   }
@@ -196,8 +242,23 @@ function createFootballer(team, number, name, isMe, targetScene = scene) {
   targetScene.add(root);
   targetScene.add(tag);
 
+  let appliedKit = null;
+  function applyKit(kit) {
+    if (appliedKit === kit) return;
+    appliedKit = kit;
+    for (const [tex, back] of [[jersey.front, false], [jersey.back, true]]) {
+      const canvas = tex.image;
+      drawKitFabric(canvas.getContext('2d'), canvas.width, kit, number, back ? name : '');
+      tex.needsUpdate = true;
+    }
+    const plain = jersey.plain.image.getContext('2d'); plain.fillStyle = kit.primaryColor;
+    plain.fillRect(0, 0, jersey.plain.image.width, jersey.plain.image.height); jersey.plain.needsUpdate = true;
+    sleeveMat.color.set(kit.secondaryColor); shortsMat.color.set(kit.shortsColor);
+    sockMat.color.set(kit.socksColor);
+    root.userData.kit = kit.id; root.userData.shirtColor = kit.primaryColor;
+  }
   return {
-    root, body, legL, legR, armL, armR, tag, tagOffsetY, highlight,
+    root, body, legL, legR, armL, armR, tag, tagOffsetY, highlight, applyKit,
     gaitPhase: Math.random() * Math.PI * 2,
     kickTimer: 0,
   };

@@ -1,3 +1,4 @@
+import { isMatchPhase } from '../../shared/matchPhases.js';
 import { THREE } from '../engine/three.js';
 import { FIELD } from '../../shared/field.js';
 import { createGameState } from './gameState.js';
@@ -47,11 +48,12 @@ initializeInvitations({ state, ui });
 const settings = createSettings({ preferences, onInteraction: () => audio.unlock().catch(() => {}) });
 const network = createSession({ state, ui, players,
   onMessage: (message) => messages.handleMessage(message),
+  onDisconnect: () => messages.clearGoalSequence(true),
 });
 const controls = createControls({ state, ui, network, preferences, settings });
 const lobby = createLobby({ state, ui, network, events, audio, ...field, ...footballers });
 const messages = createMessageHandler({ state, ui, lobby, players, ball, controls,
-  canvas: renderer.domElement, events, audio,
+  canvas: renderer.domElement, events, audio, camera,
 });
 lobby.start();
 window.addEventListener('pointerdown', () => audio.unlock().catch(() => {}));
@@ -61,7 +63,7 @@ const clock = new THREE.Clock();
 function render() {
   const dt = Math.min(clock.getDelta(), 0.05);
   const now = performance.now();
-  if (state.phase === 'playing' && !state.waitingInLobby) {
+  if (isMatchPhase(state.phase) && !state.waitingInLobby) {
     controls.sendInput(now);
     ui.updateClock();
     ball.update(dt, now);
@@ -77,4 +79,4 @@ function render() {
   requestAnimationFrame(render);
 }
 requestAnimationFrame(render);
-window.addEventListener('pagehide', () => { audio.dispose(); network.dispose(); });
+window.addEventListener('pagehide', () => { audio.dispose(); network.dispose(); ui.goalPresentation.dispose(); });

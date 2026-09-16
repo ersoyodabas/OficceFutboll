@@ -1,9 +1,10 @@
+import { getKit, clubIdentity } from '../../shared/clubs.js';
 import { THREE } from '../engine/three.js';
   export class LobbyView {
-    constructor({ container, slotsElement, field, grassMaterial, drawMarkings, createFootballer, onSelect }) {
+    constructor({ container, slotsElement, field, grassMaterial, grassGeometry, drawMarkings, createFootballer, onSelect }) {
       this.container = container;
       this.scene = new THREE.Scene();
-      this.scene.background = new THREE.Color(0x101f2a);
+      this.scene.background = new THREE.Color(0x0b141c); // matches the flat lobby background
       this.renderer = new THREE.WebGLRenderer({ antialias: true });
       this.renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 2));
       this.renderer.shadowMap.enabled = true;
@@ -25,18 +26,19 @@ import { THREE } from '../engine/three.js';
       light.shadow.bias = -.0008;
       this.scene.add(light);
 
-      const base = new THREE.Mesh(new THREE.BoxGeometry(52, 1.6, 82), new THREE.MeshStandardMaterial({ color: 0x203a42, roughness: .8 }));
+      this.field = field;
+      const base = new THREE.Mesh(new THREE.BoxGeometry(field.HALF_W * 2 + 4, 1.6, field.HALF_L * 2 + 6), new THREE.MeshStandardMaterial({ color: 0x203a42, roughness: .8 }));
       base.position.y = -.85;
       base.receiveShadow = true;
       this.scene.add(base);
-      const grass = new THREE.Mesh(new THREE.PlaneGeometry(field.HALF_W * 2, field.HALF_L * 2), grassMaterial);
+      const grass = new THREE.Mesh(grassGeometry(field.HALF_W * 2, field.HALF_L * 2), grassMaterial);
       grass.rotation.x = -Math.PI / 2;
       grass.receiveShadow = true;
       this.scene.add(grass);
       const markings = document.createElement('canvas');
       markings.width = markings.height = 1024;
       drawMarkings(markings.getContext('2d'), 1024);
-      const lines = new THREE.Mesh(grass.geometry, new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(markings), transparent: true, depthWrite: false }));
+      const lines = new THREE.Mesh(new THREE.PlaneGeometry(field.HALF_W * 2, field.HALF_L * 2), new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(markings), transparent: true, depthWrite: false }));
       lines.rotation.x = -Math.PI / 2;
       lines.position.y = .035;
       this.scene.add(lines);
@@ -45,9 +47,9 @@ import { THREE } from '../engine/three.js';
       for (const team of ['blue', 'red']) {
         const sign = team === 'blue' ? 1 : -1;
         const color = team === 'blue' ? 0x58baff : 0xff718d;
-        for (const x of [-25.3, 25.3]) {
-          const rail = new THREE.Mesh(new THREE.BoxGeometry(.12, .12, 39), new THREE.MeshBasicMaterial({ color }));
-          rail.position.set(x, .06, sign * 20);
+        for (const x of [-field.HALF_W - 1.3, field.HALF_W + 1.3]) {
+          const rail = new THREE.Mesh(new THREE.BoxGeometry(.12, .12, field.HALF_L + 1), new THREE.MeshBasicMaterial({ color }));
+          rail.position.set(x, .06, sign * (field.HALF_L + 1) / 2);
           this.scene.add(rail);
         }
         this.addGoal(sign * field.HALF_L, field);
@@ -128,7 +130,8 @@ import { THREE } from '../engine/three.js';
       const width = this.container.clientWidth, height = this.container.clientHeight;
       if (!width || !height) return;
       this.renderer.setSize(width, height, false);
-      const halfHeight = Math.max(25, 46 * height / width);
+      // Fit the whole pitch (goals included) in whichever dimension is tighter.
+      const halfHeight = Math.max(this.field.HALF_W + 1.5, (this.field.HALF_L + 6) * height / width);
       const halfWidth = halfHeight * width / height;
       Object.assign(this.camera, { left: -halfWidth, right: halfWidth, top: halfHeight, bottom: -halfHeight });
       this.camera.updateProjectionMatrix();
@@ -140,20 +143,23 @@ import { THREE } from '../engine/three.js';
       }
     }
 
-    update(players, myId, locked) {
+    update(players, myId, locked, teams) {
       for (const slot of this.slots) {
         const player = players.find((p) => !p.isAI && p.team === slot.team && p.slot === slot.index);
+        const kit = getKit(teams?.[slot.team]?.clubId, teams?.[slot.team]?.kitId);
+        if (kit) slot.model.applyKit(kit);
         const isMe = player?.id === myId;
         slot.model.root.visible = !!player;
         slot.ring.material.color.setHex(isMe ? 0xffdf7b : player?.ready ? 0x80efb3 : slot.color);
         slot.button.disabled = locked || (!!player && !isMe);
         slot.button.classList.toggle('occupied', !!player);
         slot.button.classList.toggle('me', isMe);
-        slot.button.classList.toggle('ready', !!player?.ready);
+        slot.button.classList.toggle('ready', !!player?.ready && !player?.inMatch);
+        slot.button.classList.toggle('not-ready', !!player && !player.ready && !player.inMatch);
         slot.button.setAttribute('aria-pressed', String(isMe));
-        slot.button.setAttribute('aria-label', player ? `${player.name}${isMe ? ', sen' : ''}, ${player.ready ? 'hazır' : 'hazır değil'}` : `${slot.team === 'blue' ? 'Mavi' : 'Kırmızı'} takım, boş yer ${slot.index + 1}`);
+        slot.button.setAttribute('aria-label', player ? `${player.name}${isMe ? ', sen' : ''}, ${player.inMatch ? 'sahada' : player.ready ? 'hazır' : 'hazır değil'}` : `${clubIdentity(teams?.[slot.team])?.name || 'Takım'}, boş yer ${slot.index + 1}`);
         slot.name.textContent = player?.name || '';
-        slot.state.textContent = player ? (player.inMatch ? 'SAHADA' : player.ready ? '✓ HAZIR' : isMe ? 'SEN' : 'BEKLENİYOR') : '';
+        slot.state.textContent = player ? (player.inMatch ? 'SAHADA' : player.ready ? '✓ HAZIR' : '! HAZIR DEĞİL') : '';
       }
       this.resize();
     }

@@ -1,8 +1,17 @@
+import { createClubSelector } from './clubSelector.js';
+import { clubIdentity } from '../../shared/clubs.js';
+import { createProfile } from './profile.js';
+import { createReadyRoster } from './readyRoster.js';
+import { validatePlayerName } from '../../shared/playerName.js';
+import { isMatchPhase } from '../../shared/matchPhases.js';
 import { CLIENT, SERVER } from '../network/protocol.js';
 import { FIELD } from '../../shared/field.js';
 import { LobbyView } from './lobbyView.js';
 import { normalizeServerUrl } from '../network/urls.js';
-export function createLobby({ state, ui, network, events, audio, grassMat, createPitchMarkings, createFootballer }) {
+export function createLobby({ state, ui, network, events, audio, grassMat, createGrassGeometry, createPitchMarkings, createFootballer }) {
+const clubs = createClubSelector({ state, ui, network, events });
+const profile = createProfile({ state, ui, network, events });
+const renderRoster = createReadyRoster(ui.dom.$('readyRoster'));
 let lobbyView = null;
 let joinInProgress = false;
 let lastLobbySfxSentAt = 0;
@@ -11,19 +20,20 @@ function renderLobby(msg) {
   ui.dom.scoreRedEl.textContent = msg.score.red;
   const players = msg.players.filter((p) => !p.isAI);
   const me = players.find((p) => p.id === state.myId);
+  clubs.render(msg);
+  renderRoster(players, state.myId, msg.teams);
   if (me) {
+    profile.sync(me);
     state.myTeam = me.team;
     state.myPosition = me.position;
     state.mySlot = me.slot;
     state.myReady = !!me.ready;
-    ui.dom.$('profileName').textContent = me.name;
-    ui.dom.$('profileAvatar').textContent = Array.from(me.name)[0].toLocaleUpperCase('tr');
     ui.dom.$('profileRole').textContent = Number.isInteger(state.mySlot)
-      ? `${state.myTeam === 'blue' ? 'Mavi takım' : 'Kırmızı takım'}${me.isHost ? ' • Lobi yöneticisi' : ''}`
+      ? `${clubIdentity(msg.teams?.[state.myTeam])?.name || 'Takım'}${msg.teams?.[state.myTeam]?.captainId === state.myId ? ' • KAPTAN' : ''}`
       : 'Sahada bir yer seç';
   }
   const inCountdown = msg.phase === 'countdown';
-  const matchInProgress = msg.phase === 'playing' || msg.phase === 'ended';
+  const matchInProgress = isMatchPhase(msg.phase) || msg.phase === 'ended';
   const readyCount = players.filter((p) => p.ready).length;
   const selected = Number.isInteger(state.mySlot);
   ui.dom.$('lobbyPlayerCount').textContent = `${players.length} oyuncu`;
@@ -33,7 +43,7 @@ function renderLobby(msg) {
   if (!lobbyView) {
     lobbyView = new LobbyView({
       container: ui.dom.$('lobbyPitch'), slotsElement: ui.dom.$('pitchSlots'), field: FIELD,
-      grassMaterial: grassMat, drawMarkings: createPitchMarkings,
+      grassMaterial: grassMat, grassGeometry: createGrassGeometry, drawMarkings: createPitchMarkings,
       createFootballer: (team, number, target) => createFootballer(team, number, '', false, target),
       onSelect: (team, slot) => {
         if (!network.isOpen()) return;
@@ -49,7 +59,7 @@ function renderLobby(msg) {
       },
     });
   }
-  lobbyView.update(players, state.myId, inCountdown || !!me?.inMatch);
+  lobbyView.update(players, state.myId, inCountdown || !!me?.inMatch, msg.teams);
   ui.dom.slotStatus.textContent = '';
   ui.dom.readyBtn.disabled = !selected || inCountdown || matchInProgress;
   ui.dom.readyBtn.textContent = matchInProgress ? 'MAÇ BEKLENİYOR' : state.myReady ? '✔ HAZIR • İPTAL ET' : 'HAZIRIM';
@@ -65,20 +75,21 @@ function renderLobby(msg) {
   ui.dom.readyProgress.textContent = `${readyCount} / ${players.length} oyuncu hazır`;
 }
 ui.dom.connectBtn.addEventListener('click', joinLobby);
-[ui.dom.serverInput, ui.dom.nameInput].forEach((el) => el.addEventListener('keydown', (e) => {
+ui.dom.nameInput.addEventListener('keydown', (e) => {
   if (e.key === 'Enter') joinLobby();
-}));
+});
 async function joinLobby() {
   if (joinInProgress || state.joined) return;
   console.log('[JOIN] Join button clicked');
-  const name = ui.dom.nameInput.value.trim();
+  const validation = validatePlayerName(ui.dom.nameInput.value);
+  const name = validation.name;
   const serverUrl = normalizeServerUrl(ui.dom.serverInput.value);
   console.log('[JOIN] Invite state:', state.autoJoinRequested);
   console.log('[JOIN] Lobby:', 'existing server lobby');
   console.log('[JOIN] Server:', serverUrl);
   console.log('[JOIN] Player:', name);
   if (!name) {
-    const error = 'Katılmadan önce adını yaz.';
+    const error = validation.error;
     ui.dom.connStatus.textContent = error;
     return;
   }

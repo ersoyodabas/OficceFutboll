@@ -11,8 +11,10 @@ const types = { '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; char
 
 export function createHttpServer({ handleJoinLanding }) {
   return http.createServer((req, res) => {
-    const pathname = (req.url || '').split('?')[0];
-    if (req.method === 'GET' && pathname === '/join') return handleJoinLanding(req, res);
+    const requestPath = (req.url || '').split('?')[0];
+    if (req.method === 'GET' && requestPath === '/join') return handleJoinLanding(req, res);
+    // The bare server address opens the game client directly.
+    const pathname = requestPath === '/' ? '/game.html' : requestPath;
     // Only public client roots are served, never server/, .env, or the repo root.
     const publicPath = pathname === '/game.html' || pathname === '/lib/three.min.js'
       || /^\/(src|shared|assets|icons)\//.test(pathname);

@@ -1,3 +1,4 @@
+import { isMatchPhase } from '../../shared/matchPhases.js';
 import { CLIENT } from '../network/protocol.js';
 
 export function createControls({ state, ui, network, preferences, settings }) {
@@ -14,7 +15,7 @@ export function createControls({ state, ui, network, preferences, settings }) {
   }
   window.addEventListener('keydown', (event) => {
     if (settings.handleKeydown(event)) return;
-    if (isBound('menu', event.code) && state.phase === 'playing' && !state.waitingInLobby && state.joined) {
+    if (isBound('menu', event.code) && isMatchPhase(state.phase) && !state.waitingInLobby && state.joined) {
       event.preventDefault();
       if (!event.repeat) ui.setMatchMenu(ui.dom.matchMenu.hidden);
       return;
@@ -35,7 +36,7 @@ export function createControls({ state, ui, network, preferences, settings }) {
 
   let lastInputSend = 0;
   function sendInput(now) {
-    if (state.waitingInLobby || !ui.dom.matchMenu.hidden || settings.isOpen() || !state.joined || !network.isOpen() || now - lastInputSend < 50) return;
+    if (state.phase !== 'playing' || state.waitingInLobby || !ui.dom.matchMenu.hidden || settings.isOpen() || !state.joined || !network.isOpen() || now - lastInputSend < 50) return;
     lastInputSend = now;
     let x = 0, z = 0;
     // Camera-relative controls for the fixed +X broadcast camera.

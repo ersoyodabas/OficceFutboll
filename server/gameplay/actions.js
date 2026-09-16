@@ -1,3 +1,4 @@
+import { recordBallTouch } from './ballTouches.js';
 import { SERVER } from '../../src/network/protocol.js';
 import { POSSESSION_RANGE, ACTION_RANGE, STANDING_TACKLE_RANGE, SLIDE_DURATION, SLIDE_FOOT_OFFSET, SLIDE_BALL_CAPTURE_RADIUS, SLIDE_BALL_CONTROL_OFFSET, ACTION_COOLDOWNS, STANDING_TACKLE_COOLDOWN, SLIDE_TACKLE_COOLDOWN, AI_KEEPER_DISTRIBUTION_DELAY, AI_KEEPER_PASS_DISTANCE, AI_KEEPER_CATCH_RANGE } from '../core/config.js';
 import { BALL_R } from '../../shared/field.js';
@@ -45,6 +46,7 @@ function beginSlide(c) {
 
 function secureBallForKeeper(c) {
   const direction = { x: 0, z: c.team === 'blue' ? -1 : 1 };
+  recordBallTouch(state, c, true);
   state.ballOwnerId = c.id;
   state.looseBallUntil = 0;
   state.ballBody.position.set(
@@ -78,6 +80,7 @@ function captureBallWithSlide(c) {
     secureBallForKeeper(c);
     return newlyCaptured;
   }
+  recordBallTouch(state, c, true);
   state.ballOwnerId = c.id;
   state.looseBallUntil = 0;
   state.ballBody.position.x = c.pos.x + direction.x * SLIDE_BALL_CONTROL_OFFSET;
@@ -128,6 +131,7 @@ function updateAIKeeperPossession(keeper, dt) {
 
   if (now - keeper.keeperPossessionStartedAt < AI_KEEPER_DISTRIBUTION_DELAY * 1000) return;
   const action = distance > AI_KEEPER_PASS_DISTANCE ? 'cross' : 'pass';
+  recordBallTouch(state, keeper, true);
   if (action === 'cross') applyBallImpulse(direction.x * 18, 4.2, direction.z * 18);
   else applyBallImpulse(direction.x * 15, .55, direction.z * 15);
   releaseBall(650);
@@ -147,6 +151,7 @@ function attemptTackle(c, sliding) {
   const range = STANDING_TACKLE_RANGE;
   if (dist > range || angle < .35) return false;
   if (Math.hypot(owner.pos.x - c.pos.x, owner.pos.z - c.pos.z) > range + .5) return false;
+  recordBallTouch(state, c);
   releaseBall(300);
   applyBallImpulse(c.facing.x * 5, .25, c.facing.z * 5);
   return true;
@@ -159,6 +164,7 @@ function performAction(c, key) {
   const owner = hasBall(c);
   let action, success = false;
   if (owner && ballDistance(c) <= ACTION_RANGE) {
+    recordBallTouch(state, c, true);
     if (key === 'A') { action = 'pass'; applyBallImpulse(c.facing.x * 16, .35, c.facing.z * 16); }
     if (key === 'S') { action = 'shot'; applyBallImpulse(c.facing.x * 22, 2.8, c.facing.z * 22); }
     if (key === 'D') { action = 'cross'; applyBallImpulse(c.facing.x * 16, 7.2, c.facing.z * 16); }
@@ -184,6 +190,7 @@ function performAction(c, key) {
 }
 
 function updateBallControl(dt) {
+  if (state.phase !== 'playing') return;
   if (state.ballOwnerId) {
     const owner = state.clients.get(state.ballOwnerId);
     if (!owner || !owner.inMatch || !hasBall(owner)) {
@@ -191,6 +198,7 @@ function updateBallControl(dt) {
     } else if (owner.isAI && owner.position === 'KL') {
       updateAIKeeperPossession(owner, dt);
     } else {
+      recordBallTouch(state, owner, true);
       const sliding = owner.slideRemaining > 0;
       const sprinting = !sliding && !!owner.input.sprint;
       const offset = sliding ? SLIDE_BALL_CONTROL_OFFSET : (sprinting ? 1.28 : .86);
@@ -212,7 +220,7 @@ function updateBallControl(dt) {
       const dist = ballDistance(c);
       if (dist < best) { nearest = c; best = dist; }
     }
-    if (nearest) state.ballOwnerId = nearest.id;
+    if (nearest) { state.ballOwnerId = nearest.id; recordBallTouch(state, nearest, true); }
   }
   for (const c of state.clients.values()) {
     if (c.standingActive > 0 && attemptTackle(c, false)) {

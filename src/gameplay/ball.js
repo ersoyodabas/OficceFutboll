@@ -48,10 +48,11 @@ function update(dt, now) {
     }
 
 }
-function applySnapshot(snapshot) {
+function applySnapshot(snapshot, snap = false) {
 ballNet.serverPos.set(snapshot.x, snapshot.y, snapshot.z);
 ballNet.serverVel.set(snapshot.vx, snapshot.vy, snapshot.vz);
 ballNet.lastUpdate = performance.now();
+if (snap) { ball.position.copy(ballNet.serverPos); ball.quaternion.set(0, 0, 0, 1); }
 }
 function reset() { ballNet.serverPos.set(0, BALL_R, 0); ballNet.serverVel.set(0, 0, 0); }
 return { mesh: ball, net: ballNet, update, applySnapshot, reset };

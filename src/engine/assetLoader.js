@@ -12,3 +12,13 @@ export function makeCanvasTexture(w, h, draw) {
 
 
 export const assetUrl = (file) => new URL('../../assets/' + file, import.meta.url).href;
+
+// One shared loader and one texture per asset file; callers share the returned
+// texture (and its sampling settings) instead of loading the image again.
+let textureLoader = null;
+const textures = new Map();
+export function loadTexture(file, { onError } = {}) {
+  textureLoader ??= new THREE.TextureLoader();
+  if (!textures.has(file)) textures.set(file, textureLoader.load(assetUrl(file), undefined, undefined, onError));
+  return textures.get(file);
+}

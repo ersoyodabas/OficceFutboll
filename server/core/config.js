@@ -4,7 +4,8 @@ export const PORT = process.env.PORT || 3000;
 export const TICK_HZ = 60;
 export const BROADCAST_HZ = 20;
 export const WIN_SCORE = 5;
-export const GOAL_PAUSE_SECONDS = 1.5;
+export const GOAL_PAUSE_SECONDS = 4;
+export const KICKOFF_PAUSE_SECONDS = 0.8;
 export const MATCH_END_PAUSE_SECONDS = 6;
 
 // ---------------------------------------------------------------------------
