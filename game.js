@@ -447,19 +447,19 @@
   }
 
   function nameSprite(name) {
-    const tex = makeCanvasTexture(256, 64, (ctx, s, h) => {
+    const tex = makeCanvasTexture(512, 128, (ctx, s, h) => {
       ctx.clearRect(0, 0, s, h);
-      ctx.font = 'bold 30px Arial';
+      ctx.font = 'bold 64px Arial';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
       const text = name.length > 14 ? name.slice(0, 13) + '…' : name;
       const textW = ctx.measureText(text).width;
-      const padX = 18;
+      const padX = 36;
       const boxW = Math.min(s, textW + padX * 2);
       const boxX = (s - boxW) / 2;
       ctx.fillStyle = 'rgba(8,10,14,0.68)';
       ctx.beginPath();
-      if (ctx.roundRect) ctx.roundRect(boxX, h * 0.18, boxW, h * 0.64, 10);
+      if (ctx.roundRect) ctx.roundRect(boxX, h * 0.18, boxW, h * 0.64, 16);
       else ctx.rect(boxX, h * 0.18, boxW, h * 0.64);
       ctx.fill();
       ctx.fillStyle = '#ffffff';
@@ -467,7 +467,7 @@
     });
     const mat = new THREE.SpriteMaterial({ map: tex, depthTest: false, depthWrite: false });
     const sprite = new THREE.Sprite(mat);
-    sprite.scale.set(0.9, 0.225, 1);
+    sprite.scale.set(2.4, 0.6, 1);
     sprite.renderOrder = 10;
     return sprite;
   }
