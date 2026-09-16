@@ -18,8 +18,8 @@ function renderLobby(msg) {
     ui.dom.$('profileName').textContent = me.name;
     ui.dom.$('profileAvatar').textContent = Array.from(me.name)[0].toLocaleUpperCase('tr');
     ui.dom.$('profileRole').textContent = Number.isInteger(state.mySlot)
-      ? `${state.myTeam === 'blue' ? 'Mavi tak?m' : 'K?rm?z? tak?m'}${me.isHost ? ' ? Lobi y?neticisi' : ''}`
-      : 'Sahada bir yer se?';
+      ? `${state.myTeam === 'blue' ? 'Mavi takım' : 'Kırmızı takım'}${me.isHost ? ' • Lobi yöneticisi' : ''}`
+      : 'Sahada bir yer seç';
   }
   const inCountdown = msg.phase === 'countdown';
   const matchInProgress = msg.phase === 'playing' || msg.phase === 'ended';
@@ -44,17 +44,17 @@ function renderLobby(msg) {
   lobbyView.update(players, state.myId, inCountdown || !!me?.inMatch);
   ui.dom.slotStatus.textContent = '';
   ui.dom.readyBtn.disabled = !selected || inCountdown || matchInProgress;
-  ui.dom.readyBtn.textContent = matchInProgress ? 'MA? BEKLEN?YOR' : state.myReady ? '? HAZIR ? ?PTAL ET' : 'HAZIRIM';
+  ui.dom.readyBtn.textContent = matchInProgress ? 'MAÇ BEKLENİYOR' : state.myReady ? '✔ HAZIR • İPTAL ET' : 'HAZIRIM';
   ui.dom.readyBtn.classList.toggle('isReady', state.myReady);
   ui.dom.$('readyMeterFill').style.width = `${players.length ? readyCount / players.length * 100 : 0}%`;
   if (matchInProgress) {
-    ui.dom.lobbyStatus.textContent = 'Devam eden ma? bitince yeni ma?a kat?labilirsin.';
+    ui.dom.lobbyStatus.textContent = 'Devam eden maç bitince yeni maça katılabilirsin.';
   } else if (inCountdown) {
-    ui.dom.lobbyStatus.textContent = 'Herkes haz?r! Ma? ba?l?yor?';
+    ui.dom.lobbyStatus.textContent = 'Herkes hazır! Maç başlıyor…';
   } else {
-    ui.dom.lobbyStatus.textContent = selected ? 'Yerini ald?n. Haz?rsan sahaya ??kal?m.' : 'Tak?m?na kat?lmak i?in sahada bo? bir yere t?kla.';
+    ui.dom.lobbyStatus.textContent = selected ? 'Yerini aldın. Hazırsan sahaya çıkalım.' : 'Takımına katılmak için sahada boş bir yere tıkla.';
   }
-  ui.dom.readyProgress.textContent = `${readyCount} / ${players.length} oyuncu haz?r`;
+  ui.dom.readyProgress.textContent = `${readyCount} / ${players.length} oyuncu hazır`;
 }
 ui.dom.connectBtn.addEventListener('click', joinLobby);
 [ui.dom.serverInput, ui.dom.nameInput].forEach((el) => el.addEventListener('keydown', (e) => {
@@ -76,7 +76,7 @@ async function joinLobby() {
   }
   joinInProgress = true;
   ui.dom.connectBtn.disabled = true;
-  ui.dom.connectBtn.textContent = 'Kat?l?yor?';
+  ui.dom.connectBtn.textContent = 'Katılıyor…';
   if (state.autoJoinRequested) ui.updateConnectionStatus('connecting');
   try {
     await network.ensureConnected();

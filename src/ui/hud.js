@@ -39,6 +39,7 @@ const reconnectBtn = $('reconnectBtn');
 
 const copyInviteLinkBtn = $('copyInviteLinkBtn');
 const inviteLinkStatus = $('inviteLinkStatus');
+const lobbyMusicQuickVolume = $('lobbyMusicQuickVolume');
 
 const countdownOverlay = $('countdownOverlay');
 const countdownNumber = $('countdownNumber');
@@ -113,6 +114,9 @@ function updateControlHint(value = preferences.get()) {
   $('menuBtn').textContent = `${keyLabel(value.keys.menu)} · Menü`;
 }
 preferences.subscribe(updateControlHint); updateControlHint();
+function syncLobbyMusicQuickVolume(value = preferences.get()) { lobbyMusicQuickVolume.value = String(value.lobbyMusicVolume); }
+preferences.subscribe(syncLobbyMusicQuickVolume); syncLobbyMusicQuickVolume();
+lobbyMusicQuickVolume.addEventListener('input', () => preferences.set({ lobbyMusicVolume: Number(lobbyMusicQuickVolume.value) }));
 $('menuBtn').addEventListener('click', () => setMatchMenu(true));
 resumeBtn.addEventListener('click', () => setMatchMenu(false));
 reconnectBtn.addEventListener('click', () => { showOverlay(connectOverlay); updateConnectionStatus('idle'); });

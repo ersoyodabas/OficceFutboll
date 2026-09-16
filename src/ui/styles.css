@@ -187,6 +187,9 @@ html, body {
   .eyebrow { display: block; color: #7be0b6; font-size: 11px; font-weight: 800; letter-spacing: 2px; margin-bottom: 10px; }
   #lobbyOverlay h1 { font-size: 32px; letter-spacing: -1px; }
   .invite-area { text-align: right; }
+  .lobby-music-control { display: inline-flex; align-items: center; gap: 8px; margin: 0 8px; vertical-align: middle; }
+  .lobby-music-control label { font-size: 12px; color: #a8bdce; white-space: nowrap; }
+  .lobby-music-control input[type="range"] { width: 100px; accent-color: #7be0b6; }
   #inviteLinkStatus { min-height: 18px; margin-top: 8px; font-size: 12px; }
   #inviteLinkStatus.success { color: #5ce87a; }
   #inviteLinkStatus.error, #slotStatus { color: #ffb89e; }
@@ -262,6 +265,8 @@ html, body {
     #lobbyOverlay { padding: 20px 12px; }
     .lobby-header { align-items: flex-start; flex-direction: column; gap: 12px; }
     .invite-area { text-align: left; }
+    .lobby-music-control { margin: 6px 0; }
+    .lobby-music-control input[type="range"] { width: 140px; }
     .pitch-header { padding: 14px 12px; gap: 8px; }
     .pitch-team { font-size: 11px; gap: 6px; letter-spacing: 0; }
     #lobbyPlayerCount { display: none; }
