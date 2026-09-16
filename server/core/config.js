@@ -31,6 +31,9 @@ export const SLIDE_BALL_CONTROL_OFFSET = 1.08;
 export const ACTION_COOLDOWNS = Object.freeze({ A: 0.42, S: 0.7, D: 0.95 });
 export const STANDING_TACKLE_COOLDOWN = 0.85;
 export const SLIDE_TACKLE_COOLDOWN = 1.8;
+export const AI_KEEPER_DISTRIBUTION_DELAY = 0.5;
+export const AI_KEEPER_PASS_DISTANCE = 18;
+export const AI_KEEPER_CATCH_RANGE = 1.85;
 export const MAX_BALL_SPEED = 23;
 export const MAX_BALL_HEIGHT = 9;
 

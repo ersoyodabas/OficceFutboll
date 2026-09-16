@@ -82,11 +82,16 @@ function createFootballer(team, number, name, isMe, targetScene = scene) {
   const sleeveMat = new THREE.MeshStandardMaterial({ color: teamHex, roughness: 0.75 });
   const sockMat = new THREE.MeshStandardMaterial({ color: teamHex, roughness: 0.75 });
 
+  // Root owns only world position/yaw. The body is a child so slide pitch is
+  // always applied in the footballer's local forward direction, independent
+  // of which way they are facing on the pitch.
   const root = new THREE.Group();
+  const body = new THREE.Group();
+  root.add(body);
 
   const hips = new THREE.Group();
   hips.position.y = 0.9;
-  root.add(hips);
+  body.add(hips);
 
   function makeLeg(sideX) {
     const hip = new THREE.Group();
@@ -135,7 +140,7 @@ function createFootballer(team, number, name, isMe, targetScene = scene) {
     const hand = new THREE.Mesh(new THREE.SphereGeometry(0.055, 8, 8), skinMat);
     hand.position.y = -0.28;
     lower.pivot.add(hand);
-    root.add(shoulder);
+    body.add(shoulder);
     return { shoulder, upper: upper.pivot, lower: lower.pivot };
   }
   const armL = makeArm(-0.29);
@@ -143,14 +148,14 @@ function createFootballer(team, number, name, isMe, targetScene = scene) {
 
   const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.07, 0.08, 8), skinMat);
   neck.position.y = shoulderY + 0.06;
-  root.add(neck);
+  body.add(neck);
   const head = new THREE.Mesh(new THREE.SphereGeometry(0.135, 14, 14), skinMat);
   head.position.y = shoulderY + 0.06 + 0.16;
   head.castShadow = true;
-  root.add(head);
+  body.add(head);
   const hair = new THREE.Mesh(new THREE.SphereGeometry(0.14, 14, 10, 0, Math.PI * 2, 0, Math.PI * 0.55), hairMat);
   hair.position.copy(head.position);
-  root.add(hair);
+  body.add(hair);
 
   const ring = new THREE.Mesh(
     new THREE.RingGeometry(0.45, 0.56, 24),
@@ -192,13 +197,13 @@ function createFootballer(team, number, name, isMe, targetScene = scene) {
   targetScene.add(tag);
 
   return {
-    root, legL, legR, armL, armR, tag, tagOffsetY, highlight,
+    root, body, legL, legR, armL, armR, tag, tagOffsetY, highlight,
     gaitPhase: Math.random() * Math.PI * 2,
     kickTimer: 0,
   };
 }
 
-function animateFootballer(f, speed, kicking, sliding, dt) {
+function animateFootballer(f, speed, kicking, sliding, sprinting, dt) {
   const poseBlend = 1 - Math.exp(-dt * 18);
 
   if (sliding) {
@@ -218,19 +223,20 @@ function animateFootballer(f, speed, kicking, sliding, dt) {
     f.armR.upper.rotation.x = THREE.MathUtils.lerp(f.armR.upper.rotation.x, 0.3, poseBlend);
     f.armL.lower.rotation.x = THREE.MathUtils.lerp(f.armL.lower.rotation.x, 0.48, poseBlend);
     f.armR.lower.rotation.x = THREE.MathUtils.lerp(f.armR.lower.rotation.x, 0.7, poseBlend);
-    f.root.rotation.z = THREE.MathUtils.lerp(f.root.rotation.z, -0.08, poseBlend);
+    f.body.rotation.z = THREE.MathUtils.lerp(f.body.rotation.z, -0.08, poseBlend);
     f.kickTimer = 0;
     return;
   }
 
   const moving = speed > 0.35;
-  const swingMax = THREE.MathUtils.clamp(speed / 8, 0, 1) * 0.9;
-  if (moving) f.gaitPhase += dt * (5.5 + speed * 0.6);
+  const swingMax = THREE.MathUtils.clamp(speed / 8, 0, 1) * (sprinting ? 1.16 : .86);
+  if (moving) f.gaitPhase += dt * (sprinting ? 8.2 + speed * .72 : 5.2 + speed * .54);
   const s = Math.sin(f.gaitPhase);
   const targetLegL = moving ? s * swingMax : 0;
   const targetLegR = moving ? -s * swingMax : 0;
-  const kneeL = moving ? Math.max(0, -Math.sin(f.gaitPhase + 0.6)) * swingMax * 1.3 : 0;
-  const kneeR = moving ? Math.max(0, -Math.sin(f.gaitPhase - Math.PI + 0.6)) * swingMax * 1.3 : 0;
+  const kneeStrength = sprinting ? 1.58 : 1.25;
+  const kneeL = moving ? Math.max(0, -Math.sin(f.gaitPhase + 0.6)) * swingMax * kneeStrength : 0;
+  const kneeR = moving ? Math.max(0, -Math.sin(f.gaitPhase - Math.PI + 0.6)) * swingMax * kneeStrength : 0;
 
   f.legL.thigh.rotation.x = THREE.MathUtils.lerp(f.legL.thigh.rotation.x, targetLegL, 0.35);
   f.legR.thigh.rotation.x = THREE.MathUtils.lerp(f.legR.thigh.rotation.x, targetLegR, 0.35);
@@ -239,10 +245,11 @@ function animateFootballer(f, speed, kicking, sliding, dt) {
   f.legL.hip.rotation.z = THREE.MathUtils.lerp(f.legL.hip.rotation.z, 0, poseBlend);
   f.legR.hip.rotation.z = THREE.MathUtils.lerp(f.legR.hip.rotation.z, 0, poseBlend);
 
-  f.armL.upper.rotation.x = THREE.MathUtils.lerp(f.armL.upper.rotation.x, -targetLegL * 0.7, 0.35);
-  f.armR.upper.rotation.x = THREE.MathUtils.lerp(f.armR.upper.rotation.x, -targetLegR * 0.7, 0.35);
-  f.armL.lower.rotation.x = THREE.MathUtils.lerp(f.armL.lower.rotation.x, moving ? 0.3 : 0.15, 0.35);
-  f.armR.lower.rotation.x = THREE.MathUtils.lerp(f.armR.lower.rotation.x, moving ? 0.3 : 0.15, 0.35);
+  const armStrength = sprinting ? .96 : .68;
+  f.armL.upper.rotation.x = THREE.MathUtils.lerp(f.armL.upper.rotation.x, -targetLegL * armStrength, 0.35);
+  f.armR.upper.rotation.x = THREE.MathUtils.lerp(f.armR.upper.rotation.x, -targetLegR * armStrength, 0.35);
+  f.armL.lower.rotation.x = THREE.MathUtils.lerp(f.armL.lower.rotation.x, moving ? (sprinting ? .82 : .3) : .15, 0.35);
+  f.armR.lower.rotation.x = THREE.MathUtils.lerp(f.armR.lower.rotation.x, moving ? (sprinting ? .82 : .3) : .15, 0.35);
   f.armL.shoulder.rotation.z = THREE.MathUtils.lerp(f.armL.shoulder.rotation.z, 0, poseBlend);
   f.armR.shoulder.rotation.z = THREE.MathUtils.lerp(f.armR.shoulder.rotation.z, 0, poseBlend);
 
@@ -256,9 +263,12 @@ function animateFootballer(f, speed, kicking, sliding, dt) {
   }
 
   if (!moving) {
-    f.root.rotation.z = Math.sin(performance.now() * 0.0015) * 0.03;
+    f.body.rotation.z = Math.sin(performance.now() * 0.0015) * 0.03;
   } else {
-    f.root.rotation.z = THREE.MathUtils.lerp(f.root.rotation.z, 0, 0.1);
+    const runningLean = sprinting ? Math.sin(f.gaitPhase) * .045 : 0;
+    f.body.rotation.z = THREE.MathUtils.lerp(f.body.rotation.z, runningLean, sprinting ? .22 : .1);
+    const bounce = Math.abs(Math.sin(f.gaitPhase)) * (sprinting ? .065 : .024);
+    f.body.position.y = THREE.MathUtils.damp(f.body.position.y, bounce, sprinting ? 22 : 16, dt);
   }
 }
 

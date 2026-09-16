@@ -5,6 +5,36 @@ export function createSimulation({ state, broadcast, broadcastLobby, players, ph
 let lastTick = Date.now();
 let broadcastAccum = 0;
 
+function containBallWithinPitch() {
+  const ball = state.ballBody;
+  const maxX = HALF_W - BALL_R;
+  const maxZ = HALF_L - BALL_R;
+  const goalOpeningHalfWidth = GOAL_HALF_W - BALL_R;
+  const ballUnderCrossbar = ball.position.y <= GOAL_HEIGHT - BALL_R;
+
+  if (ball.position.x < -maxX) {
+    ball.position.x = -maxX;
+    if (ball.velocity.x < 0) ball.velocity.x *= -.45;
+  } else if (ball.position.x > maxX) {
+    ball.position.x = maxX;
+    if (ball.velocity.x > 0) ball.velocity.x *= -.45;
+  }
+
+  // Sliding tackles and possession control move the ball after Cannon's world
+  // step. At an end-line wall that direct correction can otherwise teleport the
+  // ball completely through the collider. Only the real goal opening stays open.
+  const canEnterGoal = Math.abs(ball.position.x) < goalOpeningHalfWidth && ballUnderCrossbar;
+  if (!canEnterGoal && ball.position.z < -maxZ) {
+    ball.position.z = -maxZ;
+    if (ball.velocity.z < 0) ball.velocity.z *= -.45;
+  } else if (!canEnterGoal && ball.position.z > maxZ) {
+    ball.position.z = maxZ;
+    if (ball.velocity.z > 0) ball.velocity.z *= -.45;
+  }
+
+  return { ballUnderCrossbar, goalOpeningHalfWidth };
+}
+
 function tick() {
   const now = Date.now();
   const dt = Math.min((now - lastTick) / 1000, 0.05);
@@ -22,8 +52,7 @@ function tick() {
       actions.updateBallControl(dt);
       for (const c of state.clients.values()) physics.resolvePlayerBallContact(c);
 
-      if (state.ballBody.position.x < -HALF_W + BALL_R) state.ballBody.position.x = -HALF_W + BALL_R;
-      if (state.ballBody.position.x > HALF_W - BALL_R) state.ballBody.position.x = HALF_W - BALL_R;
+      const { ballUnderCrossbar, goalOpeningHalfWidth } = containBallWithinPitch();
 
       if (state.ballBody.velocity.length() > MAX_BALL_SPEED) {
         state.ballBody.velocity.scale(MAX_BALL_SPEED / state.ballBody.velocity.length(), state.ballBody.velocity);
@@ -33,12 +62,11 @@ function tick() {
         if (state.ballBody.velocity.y > 0) state.ballBody.velocity.y = 0;
       }
 
-      const ballUnderCrossbar = state.ballBody.position.y <= GOAL_HEIGHT - BALL_R;
-      if (state.ballBody.position.z > HALF_L - BALL_R && Math.abs(state.ballBody.position.x) < GOAL_HALF_W - BALL_R * 0.5 && ballUnderCrossbar) {
+      if (state.ballBody.position.z > HALF_L - BALL_R && Math.abs(state.ballBody.position.x) < goalOpeningHalfWidth && ballUnderCrossbar) {
         state.score.red++;
         broadcastLobby();
         match.resetAfterGoal('red');
-      } else if (state.ballBody.position.z < -HALF_L + BALL_R && Math.abs(state.ballBody.position.x) < GOAL_HALF_W - BALL_R * 0.5 && ballUnderCrossbar) {
+      } else if (state.ballBody.position.z < -HALF_L + BALL_R && Math.abs(state.ballBody.position.x) < goalOpeningHalfWidth && ballUnderCrossbar) {
         state.score.blue++;
         broadcastLobby();
         match.resetAfterGoal('blue');

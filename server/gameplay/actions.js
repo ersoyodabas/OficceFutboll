@@ -1,5 +1,5 @@
 import { SERVER } from '../../src/network/protocol.js';
-import { POSSESSION_RANGE, ACTION_RANGE, STANDING_TACKLE_RANGE, SLIDE_TACKLE_RANGE, SLIDE_DURATION, SLIDE_FOOT_OFFSET, SLIDE_BALL_CAPTURE_RADIUS, SLIDE_BALL_CONTROL_OFFSET, ACTION_COOLDOWNS, STANDING_TACKLE_COOLDOWN, SLIDE_TACKLE_COOLDOWN } from '../core/config.js';
+import { POSSESSION_RANGE, ACTION_RANGE, STANDING_TACKLE_RANGE, SLIDE_DURATION, SLIDE_FOOT_OFFSET, SLIDE_BALL_CAPTURE_RADIUS, SLIDE_BALL_CONTROL_OFFSET, ACTION_COOLDOWNS, STANDING_TACKLE_COOLDOWN, SLIDE_TACKLE_COOLDOWN, AI_KEEPER_DISTRIBUTION_DELAY, AI_KEEPER_PASS_DISTANCE, AI_KEEPER_CATCH_RANGE } from '../core/config.js';
 import { BALL_R } from '../../shared/field.js';
 import * as CANNON from 'cannon-es';
 export function createActions({ state, broadcast }) {
@@ -12,6 +12,8 @@ function hasBall(c) {
 }
 
 function releaseBall(duration = 280) {
+  const owner = state.clients.get(state.ballOwnerId);
+  if (owner?.isAI) owner.keeperPossessionStartedAt = 0;
   state.ballOwnerId = null;
   state.looseBallUntil = Date.now() + duration;
 }
@@ -41,6 +43,26 @@ function beginSlide(c) {
   c.slideRemaining = SLIDE_DURATION;
 }
 
+function secureBallForKeeper(c) {
+  const direction = { x: 0, z: c.team === 'blue' ? -1 : 1 };
+  state.ballOwnerId = c.id;
+  state.looseBallUntil = 0;
+  state.ballBody.position.set(
+    c.pos.x + direction.x * SLIDE_BALL_CONTROL_OFFSET,
+    BALL_R,
+    c.pos.z + direction.z * SLIDE_BALL_CONTROL_OFFSET
+  );
+  state.ballBody.velocity.set(0, 0, 0);
+  state.ballBody.angularVelocity.set(0, 0, 0);
+  c.facing = direction;
+  c.vel.x = 0;
+  c.vel.z = 0;
+  c.slideRemaining = 0;
+  c.slideDirection = null;
+  c.recoveryRemaining = 0;
+  c.keeperPossessionStartedAt = Date.now();
+}
+
 function captureBallWithSlide(c) {
   if (!c.inMatch || c.slideRemaining <= 0 || state.ballBody.position.y > 1.1) return false;
 
@@ -51,6 +73,11 @@ function captureBallWithSlide(c) {
   if (distanceToFoot > SLIDE_BALL_CAPTURE_RADIUS) return false;
 
   const newlyCaptured = state.ballOwnerId !== c.id;
+  const isAIKeeper = c.isAI && c.position === 'KL';
+  if (isAIKeeper) {
+    secureBallForKeeper(c);
+    return newlyCaptured;
+  }
   state.ballOwnerId = c.id;
   state.looseBallUntil = 0;
   state.ballBody.position.x = c.pos.x + direction.x * SLIDE_BALL_CONTROL_OFFSET;
@@ -59,6 +86,53 @@ function captureBallWithSlide(c) {
   state.ballBody.velocity.set(c.vel.x, 0, c.vel.z);
   state.ballBody.angularVelocity.set(0, 0, 0);
   return newlyCaptured;
+}
+
+function keeperDistributionTarget(keeper) {
+  const teammates = Array.from(state.clients.values()).filter((candidate) => (
+    candidate.inMatch && candidate.team === keeper.team && candidate.id !== keeper.id && !candidate.isAI
+  ));
+  if (!teammates.length) return null;
+  const attackSign = keeper.team === 'blue' ? -1 : 1;
+  return teammates.reduce((best, candidate) => {
+    const distance = Math.hypot(candidate.pos.x - keeper.pos.x, candidate.pos.z - keeper.pos.z);
+    const progress = candidate.pos.z * attackSign;
+    const score = progress - distance * .12;
+    return !best || score > best.score ? { player: candidate, score } : best;
+  }, null).player;
+}
+
+function updateAIKeeperPossession(keeper, dt) {
+  const now = Date.now();
+  if (!keeper.keeperPossessionStartedAt) keeper.keeperPossessionStartedAt = now;
+  const teammate = keeperDistributionTarget(keeper);
+  const fallbackZ = keeper.team === 'blue' ? keeper.pos.z - 20 : keeper.pos.z + 20;
+  const targetX = teammate?.pos.x ?? 0;
+  const targetZ = teammate?.pos.z ?? fallbackZ;
+  const dx = targetX - keeper.pos.x;
+  const dz = targetZ - keeper.pos.z;
+  const distance = Math.hypot(dx, dz) || 1;
+  const direction = { x: dx / distance, z: dz / distance };
+  keeper.facing = direction;
+  keeper.vel.x = 0;
+  keeper.vel.z = 0;
+
+  const targetBallX = keeper.pos.x + direction.x * .72;
+  const targetBallZ = keeper.pos.z + direction.z * .72;
+  const blend = 1 - Math.exp(-dt * 18);
+  state.ballBody.position.x += (targetBallX - state.ballBody.position.x) * blend;
+  state.ballBody.position.z += (targetBallZ - state.ballBody.position.z) * blend;
+  state.ballBody.position.y = BALL_R;
+  state.ballBody.velocity.set(0, 0, 0);
+  state.ballBody.angularVelocity.set(0, 0, 0);
+
+  if (now - keeper.keeperPossessionStartedAt < AI_KEEPER_DISTRIBUTION_DELAY * 1000) return;
+  const action = distance > AI_KEEPER_PASS_DISTANCE ? 'cross' : 'pass';
+  if (action === 'cross') applyBallImpulse(direction.x * 18, 4.2, direction.z * 18);
+  else applyBallImpulse(direction.x * 15, .55, direction.z * 15);
+  releaseBall(650);
+  keeper.lastAction = { type: action, at: now };
+  broadcast({ type: SERVER.ACTION_RESULT, id: keeper.id, action, success: true, hasBall: true });
 }
 
 function attemptTackle(c, sliding) {
@@ -114,6 +188,8 @@ function updateBallControl(dt) {
     const owner = state.clients.get(state.ballOwnerId);
     if (!owner || !owner.inMatch || !hasBall(owner)) {
       releaseBall(180);
+    } else if (owner.isAI && owner.position === 'KL') {
+      updateAIKeeperPossession(owner, dt);
     } else {
       const sliding = owner.slideRemaining > 0;
       const sprinting = !sliding && !!owner.input.sprint;
@@ -146,15 +222,17 @@ function updateBallControl(dt) {
     if (c.slideRemaining > 0 && attemptTackle(c, true)) {
       broadcast({ type: SERVER.ACTION_RESULT, id: c.id, action: 'slide_tackle', success: true, hasBall: false });
     }
-    // AI goalkeeper automatic defense
-    if (c.isAI && c.position === 'KL' && state.ballOwnerId && state.ballOwnerId !== c.id) {
+    // AI keepers never slide. A loose shot or back-pass is caught standing
+    // once it enters their control radius, then distributed upfield.
+    if (c.isAI && c.position === 'KL' && !state.ballOwnerId) {
       const dist = ballDistance(c);
-      if (dist < SLIDE_TACKLE_RANGE && c.slideRemaining === 0 && Date.now() >= c.cooldowns.D) {
-        beginSlide(c);
-        if (attemptTackle(c, true)) {
-          c.cooldowns.D = Date.now() + SLIDE_TACKLE_COOLDOWN * 1000;
-          broadcast({ type: SERVER.ACTION_RESULT, id: c.id, action: 'slide_tackle', success: true, hasBall: false });
-        }
+      const horizontalSpeed = Math.hypot(state.ballBody.velocity.x, state.ballBody.velocity.z);
+      const towardOwnGoal = c.team === 'blue' ? state.ballBody.velocity.z > 1.5 : state.ballBody.velocity.z < -1.5;
+      const isSaveableShot = horizontalSpeed > 4 && towardOwnGoal && state.ballBody.position.y < 1.35;
+      if (isSaveableShot && dist < AI_KEEPER_CATCH_RANGE) {
+        secureBallForKeeper(c);
+        c.lastAction = { type: 'save', at: Date.now() };
+        broadcast({ type: SERVER.ACTION_RESULT, id: c.id, action: 'save', success: true, hasBall: false });
       }
     }
   }

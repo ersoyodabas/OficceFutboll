@@ -71,7 +71,7 @@ function render() {
   audio.setLobbyActive(showingLobby);
   if (showingLobby) lobby.render(now);
   else {
-    camera.updateBroadcastCamera(ball.mesh);
+    camera.updateBroadcastCamera(ball.mesh, players.getLocalPosition(), dt);
     renderer.render(scene, camera.camera);
   }
   requestAnimationFrame(render);

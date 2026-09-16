@@ -44,6 +44,7 @@ function startMatch() {
     recoveryRemaining: 0,
     standingActive: 0,
     lastAction: null,
+    keeperPossessionStartedAt: 0,
   });
   for (const team of ['blue', 'red']) {
     if (!Array.from(state.clients.values()).some((c) => c.inMatch && c.team === team && c.slot === 0)) {
@@ -65,7 +66,7 @@ function startMatch() {
 
 function resetAfterGoal(scorerTeam) {
   state.pendingServe = scorerTeam === 'blue' ? 'red' : 'blue';
-  state.ballBody.position.set(0, BALL_R, state.pendingServe === 'blue' ? 3 : -3);
+  state.ballBody.position.set(0, BALL_R, 0);
   state.ballBody.velocity.set(0, 0, 0);
   state.ballBody.angularVelocity.set(0, 0, 0);
   state.ballOwnerId = null;

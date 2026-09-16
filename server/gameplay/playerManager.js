@@ -29,6 +29,7 @@ function placeAllPlayers() {
     c.slideRemaining = 0;
     c.slideDirection = null;
     c.recoveryRemaining = 0;
+    c.keeperPossessionStartedAt = 0;
   }
 }
 function allowedRange(c) {
@@ -44,6 +45,20 @@ function allowedRange(c) {
 
 function applyPlayerControl(c, dt) {
   if (!c.inMatch) return;
+
+  if (c.isAI && c.position === 'KL' && state.ballOwnerId === c.id) {
+    // A keeper that has secured the ball stops the save animation and faces
+    // into the pitch. Distribution is handled by actions.updateBallControl.
+    c.slideRemaining = 0;
+    c.slideDirection = null;
+    c.recoveryRemaining = 0;
+    c.vel.x = 0;
+    c.vel.z = 0;
+    c.facing = { x: 0, z: c.team === 'blue' ? -1 : 1 };
+    c.pos.x = Math.max(PITCH_MIN_X, Math.min(PITCH_MAX_X, c.pos.x));
+    c.pos.z = Math.max(PITCH_MIN_Z, Math.min(PITCH_MAX_Z, c.pos.z));
+    return;
+  }
 
   // A slide keeps the direction captured at its starting moment. Input or AI
   // steering cannot bend the player mid-slide.
@@ -88,8 +103,8 @@ function applyPlayerControl(c, dt) {
     // Keeper area bounds (6-yard box)
     const keeperXMin = Math.max(PITCH_MIN_X, -GOAL_HALF_W * 2.5);
     const keeperXMax = Math.min(PITCH_MAX_X, GOAL_HALF_W * 2.5);
-    const keeperZMin = keeperZ - 5;
-    const keeperZMax = keeperZ + 3;
+    const keeperZMin = c.team === 'blue' ? keeperZ - 5 : PITCH_MIN_Z;
+    const keeperZMax = c.team === 'blue' ? PITCH_MAX_Z : keeperZ + 5;
     
     c.pos.x = Math.max(keeperXMin, Math.min(keeperXMax, c.pos.x + c.vel.x * dt));
     c.pos.z = Math.max(keeperZMin, Math.min(keeperZMax, c.pos.z + c.vel.z * dt));

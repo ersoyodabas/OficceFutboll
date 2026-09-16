@@ -37,13 +37,17 @@ function createPitchMarkings(ctx, s) {
   const scaleX = s / (HALF_W * 2);
   const scaleZ = s / (HALF_L * 2);
   const toPx = (x, z) => [s / 2 + x * scaleX, s / 2 + z * scaleZ];
-  // draws a box given world-space X half-width and a Z range [z0, z1]
-  const strokeBoxXZ = (halfW, z0, z1) => {
-    const [xLeft] = toPx(-halfW, 0);
-    const [xRight] = toPx(halfW, 0);
-    const [, yTop] = toPx(0, Math.min(z0, z1));
-    const [, yBottom] = toPx(0, Math.max(z0, z1));
-    ctx.strokeRect(xLeft, yTop, xRight - xLeft, yBottom - yTop);
+  // The goal line already closes each box. Draw only the three inward edges so
+  // overlapping strokes cannot create a second, offset line at the boundary.
+  const strokeOpenBoxXZ = (halfW, goalLineZ, innerZ) => {
+    const [xLeft, goalY] = toPx(-halfW, goalLineZ);
+    const [xRight, innerY] = toPx(halfW, innerZ);
+    ctx.beginPath();
+    ctx.moveTo(xLeft, goalY);
+    ctx.lineTo(xLeft, innerY);
+    ctx.lineTo(xRight, innerY);
+    ctx.lineTo(xRight, goalY);
+    ctx.stroke();
   };
 
   ctx.strokeStyle = 'rgba(255,255,255,0.92)';
@@ -51,7 +55,7 @@ function createPitchMarkings(ctx, s) {
   ctx.lineWidth = 4;
 
   // touchlines + goal lines
-  ctx.strokeRect(6, 6, s - 12, s - 12);
+  ctx.strokeRect(ctx.lineWidth / 2, ctx.lineWidth / 2, s - ctx.lineWidth, s - ctx.lineWidth);
   // halfway line
   ctx.beginPath(); ctx.moveTo(0, s / 2); ctx.lineTo(s, s / 2); ctx.stroke();
   // center circle + spot
@@ -72,8 +76,8 @@ function createPitchMarkings(ctx, s) {
     const goalLineZ = sign * HALF_L;
     const inward = -sign; // direction from the goal line toward the pitch center
 
-    strokeBoxXZ(penaltyHalfW, goalLineZ, goalLineZ + inward * penaltyDepth);
-    strokeBoxXZ(sixYardHalfW, goalLineZ, goalLineZ + inward * sixYardDepth);
+    strokeOpenBoxXZ(penaltyHalfW, goalLineZ, goalLineZ + inward * penaltyDepth);
+    strokeOpenBoxXZ(sixYardHalfW, goalLineZ, goalLineZ + inward * sixYardDepth);
 
     const [spotX, spotZ] = toPx(0, goalLineZ + inward * penaltySpotDist);
     ctx.beginPath(); ctx.arc(spotX, spotZ, 4, 0, Math.PI * 2); ctx.fill();
@@ -84,7 +88,8 @@ function createPitchMarkings(ctx, s) {
     // center" is 270°/-90° when the goal is at the bottom edge (sign===1)
     // and 90° when the goal is at the top edge (sign===-1).
     const centerAngle = sign === 1 ? Math.PI * 1.5 : Math.PI * 0.5;
-    const spread = Math.PI * 0.23;
+    const boxToSpot = penaltyDepth - penaltySpotDist;
+    const spread = Math.acos(boxToSpot / FIELD.CENTER_CIRCLE_R);
     ctx.beginPath();
     ctx.ellipse(spotX, spotZ, arcRadiusX, arcRadiusZ, 0, centerAngle - spread, centerAngle + spread);
     ctx.stroke();
