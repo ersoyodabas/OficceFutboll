@@ -77,6 +77,21 @@ test('releasing S fires a shot with power timed by the server clock', (t) => {
   assert.ok(horizontalSpeed(state.ballBody) > SHOT_MIN_SPEED && horizontalSpeed(state.ballBody) < SHOT_MAX_SPEED);
 });
 
+test('rejected shot starts resolve the predicted bar during recovery or tackle cooldown', (t) => {
+  const { state, actions, messages, shooter, giveBall } = fixture(t);
+  giveBall();
+  shooter.recoveryRemaining = .2;
+  actions.startShotCharge(shooter);
+  assert.equal(messages.at(-1).action, 'shot_cancel');
+  assert.equal(shooter.shotCharge, null);
+  shooter.recoveryRemaining = 0;
+  state.ballOwnerId = null;
+  shooter.cooldowns.S = Date.now() + 1000;
+  actions.startShotCharge(shooter);
+  assert.equal(messages.at(-1).action, 'shot_cancel');
+  assert.equal(messages.filter((message) => message.action === 'shot_cancel').length, 2);
+});
+
 test('a 2 s hold gives maximum power and holding longer cannot exceed it', (t) => {
   const { state, actions, messages, shooter, giveBall, wait } = fixture(t);
   const speeds = [];
@@ -134,6 +149,67 @@ test('releasing without a server-side charge or after losing the ball never shoo
   const count = messages.filter((m) => m.action === 'shot').length;
   actions.releaseShot(shooter);
   assert.equal(messages.filter((m) => m.action === 'shot').length, count);
+});
+
+test('the authoritative deadline is exactly 2000 ms, even after a stalled simulation frame', (t) => {
+  const { actions, messages, shooter, giveBall, wait } = fixture(t);
+  assert.equal(SHOT_MAX_CHARGE_MS, 2000);
+  giveBall();
+  actions.startShotCharge(shooter);
+  wait(SHOT_MAX_CHARGE_MS - 1);
+  actions.updateShotCharges(.05);
+  assert.ok(shooter.shotCharge);
+  assert.ok(!messages.some((m) => m.action === 'shot'));
+  wait(1);
+  actions.updateShotCharges(.001);
+  assert.equal(messages.at(-1).action, 'shot');
+  assert.equal(messages.at(-1).charge, 1);
+  actions.releaseShot(shooter);
+  actions.updateShotCharges(.05);
+  assert.equal(messages.filter((m) => m.action === 'shot').length, 1);
+});
+
+test('dribbling stays near the feet while jogging, sprinting, braking and turning, without teleporting', (t) => {
+  const { state, shooter, giveBall, advance } = fixture(t);
+  state.clients.get('red').pos = { x: 20, z: 20 };
+  shooter.pos = { x: 0, z: 12 };
+  shooter.facing = { x: 0, z: -1 };
+  giveBall();
+  for (const input of [
+    { x: 0, z: -1, sprint: false },
+    { x: 0, z: -1, sprint: true },
+    { x: 1, z: 0, sprint: true },
+    { x: 0, z: 0, sprint: false },
+    { x: -1, z: 0, sprint: false },
+  ]) {
+    shooter.input = input;
+    for (let i = 0; i < 80; i++) {
+      const previous = { x: state.ballBody.position.x, z: state.ballBody.position.z };
+      advance();
+      const ball = state.ballBody.position;
+      assert.equal(state.ballOwnerId, shooter.id, 'movement preserves possession');
+      assert.ok(Math.hypot(ball.x - previous.x, ball.z - previous.z) < .2, 'the physical ball moves continuously');
+      const distance = Math.hypot(ball.x - shooter.pos.x, ball.z - shooter.pos.z);
+      assert.ok(distance < .95, `ball remains close: ${distance}`);
+      if (i > 60) assert.ok(distance > .25, `ball clears the body: ${distance}`);
+    }
+  }
+});
+
+test('a shot, pass or cross from the closer dribble clears the shooter and stays loose', (t) => {
+  const { state, actions, shooter, giveBall, advance } = fixture(t);
+  state.clients.get('red').pos = { x: 20, z: 20 };
+  for (const key of ['S', 'A', 'D']) {
+    shooter.pos = { x: 0, z: 8 };
+    shooter.facing = { x: 0, z: -1 };
+    giveBall();
+    for (let i = 0; i < 90; i++) advance();
+    const startZ = state.ballBody.position.z;
+    actions.performAction(shooter, key);
+    for (let i = 0; i < 12; i++) advance();
+    assert.equal(state.ballOwnerId, null);
+    assert.ok(state.ballBody.position.z < startZ - 1, `${key} clears the player`);
+  }
 });
 
 test('opposite input brakes and turns before running the other way', (t) => {

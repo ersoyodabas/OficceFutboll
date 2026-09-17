@@ -20,13 +20,15 @@ function startCountdown() {
   broadcast({ type: SERVER.COUNTDOWN_START, startAt: state.countdownStartAt, duration: COUNTDOWN_SECONDS * 1000 });
 }
 
-function cancelCountdown() {
+// keepReady is for a player who simply took their own readiness back: the
+// line-up did not change, so the others keep the readiness they already gave.
+function cancelCountdown({ keepReady = false } = {}) {
   if (state.phase !== 'countdown') return;
   state.phase = 'lobby';
-  // require everyone to re-confirm readiness rather than silently resuming
-  // with potentially-stale ready flags (see README "Davet Linki" notes on
-  // the join-during-countdown decision)
-  for (const c of state.clients.values()) c.ready = false;
+  // A changed line-up (join, leave) requires everyone to re-confirm rather than
+  // silently resuming with potentially-stale ready flags (see README "Davet
+  // Linki" notes on the join-during-countdown decision).
+  if (!keepReady) for (const c of state.clients.values()) c.ready = false;
   broadcast({ type: SERVER.COUNTDOWN_CANCELLED });
   broadcastLobby();
 }

@@ -1,4 +1,5 @@
 import { getKit } from '../../shared/clubs.js';
+import { shirtNumberFor } from './playerNumber.js';
 import { PLAYER_ROTATION_SPEED } from '../core/config.js';
 import { THREE } from '../engine/three.js';
 import { createSlideGrassEffects } from './slideGrassEffects.js';
@@ -19,7 +20,7 @@ function clearEntities() {
 function ensureEntity(id, team, name) {
   let e = entities.get(id);
   if (!e) {
-    const number = (hashCode(id) % 23) + 1;
+    const number = shirtNumberFor(id);
     e = {
       footballer: createFootballer(team, number, name, id === state.myId),
       netPos: new THREE.Vector3(0, 0, 0),
@@ -35,12 +36,6 @@ function ensureEntity(id, team, name) {
   }
   return e;
 }
-function hashCode(str) {
-  let h = 0;
-  for (let i = 0; i < str.length; i++) h = (h * 31 + str.charCodeAt(i)) >>> 0;
-  return h;
-}
-
 function applySnapshot(players, snap = false) {
   if (snap) slideGrass.clear();
   const seen = new Set();

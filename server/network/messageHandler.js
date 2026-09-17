@@ -71,7 +71,10 @@ function onConnection(ws) {
     } else if (msg.type === CLIENT.SELECT_SLOT && joined) {
       lobby.selectSlot(client, msg.team, msg.slot);
     } else if (msg.type === CLIENT.READY && joined) {
-      if (lobby.setReady(client, msg.ready)) ready.checkAutoStart();
+      // The server decides: readiness starts the countdown, taking it back stops it.
+      if (!lobby.setReady(client, msg.ready)) return;
+      if (state.phase === 'countdown') { ready.cancelCountdown({ keepReady: true }); broadcastLobby(); }
+      else ready.checkAutoStart();
     } else if (msg.type === CLIENT.INPUT && joined) {
       if (state.phase !== 'playing' || !client.inMatch) return;
       client.input = {

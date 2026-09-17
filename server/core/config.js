@@ -12,7 +12,7 @@ export const MATCH_END_PAUSE_SECONDS = 6;
 // Ready-up / auto-start config
 // ---------------------------------------------------------------------------
 export const MIN_PLAYERS_TO_START = 1; // solo practice and multiplayer use the same ready flow
-export const COUNTDOWN_SECONDS = 3;
+export const COUNTDOWN_SECONDS = 5;  // 5 · 4 · 3 · 2 · 1 over the lobby line-up
 export const MATCH_DURATION_SECONDS = 300; // 5 minutes
 
 export const { HALF_W, HALF_L, GOAL_HALF_W, GOAL_HEIGHT, BALL_R, PLAYER_R } = FIELD;
@@ -38,6 +38,9 @@ export const PLAYER_TURN_ACCELERATION = 18;
 export const SHOT_CHARGE_TURN_FACTOR = 0.12;
 export const SHOT_CHARGE_SPEED_FACTOR = 0.55;
 export const POSSESSION_RANGE = 1.15;
+// Small forward clearance from the feet; possession still drives the physical ball.
+export const DRIBBLE_OFFSET = 0.55;
+export const DRIBBLE_SPRINT_OFFSET = 0.68;
 export const ACTION_RANGE = POSSESSION_RANGE * 1.9;
 export const STANDING_TACKLE_RANGE = 2.1;
 export const SLIDE_TACKLE_RANGE = 2.7;

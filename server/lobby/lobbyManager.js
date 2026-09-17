@@ -60,8 +60,12 @@ function selectSlot(client, team, slot) {
       client.ready = false;
       broadcastLobby();
 }
+// Returns true when the readiness actually changed, so the caller can start or
+// cancel a countdown. Taking readiness back during the countdown is allowed and
+// stops the match from starting; everything else is lobby-phase only.
 function setReady(client, value) {
-      if (state.phase !== 'lobby') return; // can't change readiness once counting down or in-match
+      if (state.phase === 'countdown') return !value && client.ready ? (client.ready = false, true) : false;
+      if (state.phase !== 'lobby') return false; // in-match readiness is owned by the match
       const error = value && validateClubSelections(state.teams);
       if (error) { send(client.ws, { type: SERVER.SLOT_ERROR, message: error }); return; }
       if (!Number.isInteger(client.slot)) {

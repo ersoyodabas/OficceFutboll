@@ -28,7 +28,8 @@ export function createControls({ state, ui, network, preferences, settings, play
     if (msg.id !== state.myId) return;
     if (msg.action === 'shot_charge' && shootHeld && shotPressedAt !== null) {
       serverChargeStartedAt = typeof msg.startedAt === 'number' ? msg.startedAt : null;
-      shotBar.start(shotPressedAt);
+      // An acknowledgement confirms authority; it must never restart the UI.
+      if (!shotBar.isCharging()) shotBar.start(shotPressedAt);
     }
     // The automatic maximum shot briefly shows the full bar; a release, a cancel
     // (ball lost) or a tackle instead hides it at once.
@@ -74,6 +75,7 @@ export function createControls({ state, ui, network, preferences, settings, play
         shotPressedAt = performance.now();
         serverChargeStartedAt = null;
         shotBar.stop();
+        if (players.hasBall(state.myId)) shotBar.start(shotPressedAt);
         network.send({ type: CLIENT.SHOT_CHARGE_START });
       } else if (!shootHeld) {
         // Pass/cross are ignored while S is held.

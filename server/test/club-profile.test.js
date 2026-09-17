@@ -95,6 +95,30 @@ test('kit clashes are rejected on selection, ready, countdown and final start', 
   state.phase = 'countdown'; match.startMatch(); assert.equal(state.phase, 'lobby'); assert.equal(state.world, null);
 });
 
+test('the countdown starts when everyone is ready and stops when someone takes it back', () => {
+  const { state, lobby, ready, add } = fixture();
+  const a = add('a', 'blue', 4), b = add('b', 'red', 4);
+  assert.equal(lobby.setReady(a, true), true);
+  ready.checkAutoStart();
+  assert.equal(state.phase, 'lobby', 'one ready player is not everyone');
+  lobby.setReady(b, true);
+  ready.checkAutoStart();
+  assert.equal(state.phase, 'countdown');
+  assert.equal(lobby.setReady(a, true), false, 'confirming again changes nothing');
+  assert.equal(lobby.setReady(a, false), true, 'a player may take readiness back mid-countdown');
+  ready.cancelCountdown({ keepReady: true });
+  assert.equal(state.phase, 'lobby');
+  assert.equal(a.ready, false);
+  assert.equal(b.ready, true, 'the line-up did not change, so the others stay ready');
+  ready.checkAutoStart();
+  assert.equal(state.phase, 'lobby', 'the match cannot start until everyone is ready again');
+  // A changed line-up (someone joining or leaving) still resets everybody.
+  lobby.setReady(a, true); ready.checkAutoStart();
+  assert.equal(state.phase, 'countdown');
+  ready.cancelCountdown();
+  assert.ok([...state.clients.values()].every((player) => !player.ready));
+});
+
 test('club selections reach match and goal, then reset as lobby state', () => {
   const { state, messages, clubs, match, add } = fixture();
   const a = add('a', 'blue', 4); add('b', 'red', 4);

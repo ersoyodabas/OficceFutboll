@@ -56,7 +56,8 @@ try {
   await a.locator('#nameInput').fill('Extension A');
   await a.locator('#connectBtn').click();
   await a.locator('#lobbyOverlay').waitFor({ state: 'visible' });
-  await until(() => a.locator('#pitchSlots button').count().then((n) => n === 10), 'extension lobby slots');
+  await until(() => a.locator('#lobbySlots button').count().then((n) => n === 10), 'extension lobby slots');
+  assert.equal(await a.locator('#app > canvas').count(), 1, 'the lobby draws with the game renderer, not a second one');
   await a.locator('#lobbySettingsBtn').click();
   await a.locator('#settingsOverlay').waitFor({ state: 'visible' });
   assert.equal(await a.locator('#masterVolume').inputValue(), '0.5');
@@ -83,7 +84,16 @@ try {
   await until(() => ma.some((m) => m.type === 'lobby' && m.players.filter((p) => Number.isInteger(p.slot)).length === 2), 'shared team selection');
   const playerId = ma.find((m) => m.type === 'welcome').id;
   assert.equal(await a.locator('#readyRoster [data-status="not-ready"]').count(), 2);
-  assert.equal(await b.locator('.pitch-slot.not-ready .slot-state').first().textContent(), '! HAZIR DEĞİL');
+  assert.equal(await b.locator('.slot-card.not-ready .slot-state').first().textContent(), 'HAZIR DEĞİL');
+  // Cards hang under the footballer they belong to, so their box spans the model.
+  const card = await b.locator('.slot-card.occupied').first().evaluate((el) => ({
+    head: Number(el.style.getPropertyValue('--head')), feet: Number(el.style.getPropertyValue('--feet')),
+    width: Number(el.style.getPropertyValue('--w')), rect: el.getBoundingClientRect().height,
+  }));
+  assert.ok(card.feet > card.head + 60 && card.width > 40 && card.rect > 100, JSON.stringify(card));
+  await b.locator('#chatToggleBtn').click();
+  await b.locator('#chatPanel').waitFor({ state: 'visible' });
+  await b.locator('#chatToggleBtn').click();
   await a.locator('#profileBtn').click();
   await a.locator('#profileNameInput').fill('   ');
   await a.locator('#profileSaveBtn').click();

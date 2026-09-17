@@ -329,17 +329,8 @@ function createFootballer(team, number, name, isMe, targetScene = scene, { ownMa
   hair.position.set(0, head.position.y + (hairStyle === 1 ? .014 : .006), -.008);
   body.add(hair);
 
-  // A small marker above the controlled player's head (as in TV-style games)
-  // plus a thin ring at the feet keeps them easy to pick out from afar.
-  let highlight = null;
+  // The overhead marker identifies the controlled player without covering the feet.
   if (isMe) {
-    highlight = new THREE.Mesh(
-      geo('Ring', 0.5, 0.58, 32),
-      new THREE.MeshBasicMaterial({ color: 0xffe066, transparent: true, opacity: 0.7, side: THREE.DoubleSide, depthWrite: false })
-    );
-    highlight.rotation.x = -Math.PI / 2;
-    highlight.position.y = 0.02;
-    root.add(highlight);
     const marker = new THREE.Mesh(
       geo('Cone', .14, .26, 3),
       new THREE.MeshBasicMaterial({ color: 0xff4d4d, depthTest: false })
@@ -382,12 +373,12 @@ function createFootballer(team, number, name, isMe, targetScene = scene, { ownMa
     root.removeFromParent(); tag.removeFromParent();
     const disposable = [jerseyMat, jerseyBackMat, sleeveMat, sockMat, shortsMat, tag.material];
     if (ownMaterials) disposable.push(skinMat, hairMat, bootMat, soleMat, eyeMat);
-    root.traverse((node) => { if (node !== root && (node === highlight || node.renderOrder === 12)) disposable.push(node.material); });
+    root.traverse((node) => { if (node !== root && node.renderOrder === 12) disposable.push(node.material); });
     for (const texture of [jersey.front, jersey.back, jersey.plain, tag.material.map]) texture?.dispose();
     for (const material of new Set(disposable)) material.dispose();
   }
   return {
-    root, body, legL, legR, armL, armR, hands, tag, tagOffsetY, highlight, applyKit, materials, dispose,
+    root, body, legL, legR, armL, armR, hands, tag, tagOffsetY, applyKit, materials, dispose,
     gaitPhase: Math.random() * Math.PI * 2,
     kickTimer: 0,
   };

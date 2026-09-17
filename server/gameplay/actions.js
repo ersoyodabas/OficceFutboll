@@ -1,4 +1,5 @@
 import { recordBallTouch } from './ballTouches.js';
+import { DRIBBLE_OFFSET, DRIBBLE_SPRINT_OFFSET } from '../core/config.js';
 import { SERVER } from '../../src/network/protocol.js';
 import { POSSESSION_RANGE, ACTION_RANGE, STANDING_TACKLE_RANGE, SLIDE_DURATION, SLIDE_FOOT_OFFSET, SLIDE_BALL_CAPTURE_RADIUS, SLIDE_BALL_CONTROL_OFFSET, ACTION_COOLDOWNS, STANDING_TACKLE_COOLDOWN, SLIDE_TACKLE_COOLDOWN, AI_KEEPER_DISTRIBUTION_DELAY, AI_KEEPER_PASS_DISTANCE,
   SHOT_MIN_SPEED, SHOT_MAX_SPEED, SHOT_SPEED_EXPONENT, SHOT_MIN_LIFT, SHOT_MAX_LIFT, SHOT_LIFT_EXPONENT, SHOT_LIFT_VARIATION_FROM_CHARGE, SHOT_MAX_LIFT_VARIATION,
@@ -87,12 +88,17 @@ function canCharge(c) {
 
 function startShotCharge(c) {
   const now = Date.now();
-  if (c.shotCharge || !canCharge(c)) return;
+  if (c.shotCharge) return;
+  if (!canCharge(c) || (!hasBall(c) && !canAct(c, 'S', now))) {
+    // Resolve the client's immediate wind-up even when this press is rejected.
+    broadcast({ type: SERVER.ACTION_RESULT, id: c.id, action: 'shot_cancel', success: false, hasBall: false });
+    return;
+  }
   // Without the ball, S keeps meaning a standing tackle.
   if (!hasBall(c) || ballDistance(c) > ACTION_RANGE) { performAction(c, 'S'); return; }
   // Left/right already held when S goes down counts as aim straight away.
   c.shotCharge = { startedAt: now, aim: lateralInput(c) };
-  // startedAt is the single charge timer: clients draw the bar from it.
+  // Server time confirms the charge; the local bar stays anchored to keydown.
   broadcast({ type: SERVER.ACTION_RESULT, id: c.id, action: 'shot_charge', success: true, hasBall: true, startedAt: now });
 }
 
@@ -321,9 +327,9 @@ function updateBallControl(dt) {
       recordBallTouch(state, owner, true);
       const sliding = owner.slideRemaining > 0;
       const sprinting = !sliding && !!owner.input.sprint;
-      const offset = sliding ? SLIDE_BALL_CONTROL_OFFSET : (sprinting ? 1.28 : .86);
-      const response = sliding ? 18 : (sprinting ? 6.5 : 9);
-      const blend = 1 - Math.exp(-dt * (sliding ? 22 : (sprinting ? 9 : 13)));
+      const offset = sliding ? SLIDE_BALL_CONTROL_OFFSET : (sprinting ? DRIBBLE_SPRINT_OFFSET : DRIBBLE_OFFSET);
+      const response = sliding ? 18 : (sprinting ? 10 : 12);
+      const blend = 1 - Math.exp(-dt * (sliding ? 22 : (sprinting ? 18 : 20)));
       const targetX = owner.pos.x + owner.facing.x * offset;
       const targetZ = owner.pos.z + owner.facing.z * offset;
       const desiredVX = owner.vel.x + (targetX - state.ballBody.position.x) * response;

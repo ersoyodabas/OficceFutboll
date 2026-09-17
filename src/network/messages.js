@@ -83,7 +83,7 @@ function handleMessage(msg) {
     ui.dom.hud.hidden = true; ui.dom.hint.hidden = true;
     players.clearEntities();
     ui.hideCountdownOverlay();
-    ui.dom.$('pitchSlots').querySelector('button:not(:disabled)')?.focus({ preventScroll: true });
+    lobby.focusFirstSlot();
   } else if (msg.type === SERVER.COUNTDOWN_START) {
     ui.showCountdownOverlay(msg.startAt, msg.duration);
   } else if (msg.type === SERVER.COUNTDOWN_CANCELLED) {
@@ -102,6 +102,7 @@ function handleMessage(msg) {
     ui.hideCountdownOverlay();
     state.phase = 'playing';
     ui.showOverlay(null);
+    ui.playMatchTransition();
     audio.setLobbyActive(false);
     audio.playSfx('whistle');
     state.lastScore = { blue: 0, red: 0 };
@@ -147,7 +148,8 @@ function handleMessage(msg) {
 
 function applyState(msg, snap = false) {
   if (msg.score) state.lastScore = { ...msg.score };
-  ui.applyStateHUD(msg); players.applySnapshot(msg.players, snap); ball.applySnapshot(msg.ball, snap);
+  ui.applyStateHUD(msg); players.applySnapshot(msg.players, snap);
+  ball.applySnapshot(msg.ball, snap, msg.players.some((player) => player.hasBall));
 }
 return { handleMessage, clearGoalSequence: clearMatchPresentation };
 }

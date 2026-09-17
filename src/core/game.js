@@ -18,7 +18,6 @@ import { createBallFlame } from '../gameplay/ballFlame.js';
 import { createControls } from '../gameplay/controls.js';
 import { createUI } from '../ui/hud.js';
 import { createShotPowerBar } from '../ui/shotPowerBar.js';
-import { SHOT_MAX_CHARGE_MS } from '../../shared/shot.js';
 import { createSettings } from '../ui/settings.js';
 import { createLobby } from '../lobby/lobby.js';
 import { initializeInvitations } from '../lobby/invitation.js';
@@ -53,11 +52,11 @@ initializeInvitations({ state, ui });
 const settings = createSettings({ preferences, onInteraction: () => audio.unlock().catch(() => {}) });
 const network = createSession({ state, ui, players,
   onMessage: (message) => messages.handleMessage(message),
-  onDisconnect: () => messages.clearGoalSequence(true),
+  onDisconnect: () => { messages.clearGoalSequence(true); lobby.disposeStage(); },
 });
 const shotBar = createShotPowerBar(document.getElementById('shotPower'));
 const controls = createControls({ state, ui, network, preferences, settings, players, shotBar, events });
-const lobby = createLobby({ state, ui, network, events, audio, ...field, ...footballers });
+const lobby = createLobby({ state, ui, network, events, audio, renderer, ...footballers });
 const messages = createMessageHandler({ state, ui, lobby, players, ball, controls,
   canvas: renderer.domElement, events, audio, camera,
 });
@@ -80,9 +79,6 @@ function updateShotBar(now) {
   if (!shotBar.isCharging()) return;
   const local = players.getLocalPosition();
   if (state.phase !== 'playing' || state.waitingInLobby || !local) { controls.cancelShotCharge(); return; }
-  // The server fires automatically at 100 % and the 'shot' result hides the bar;
-  // this only covers a result that never arrives.
-  if (now - shotBar.startedAt() > SHOT_MAX_CHARGE_MS + 600) { shotBar.stop(); return; }
   barAnchor.set(local.x, players.getLocalTagHeight() + .5, local.z).project(camera.camera);
   shotBar.update(now, {
     x: (barAnchor.x + 1) / 2 * window.innerWidth,
@@ -103,7 +99,7 @@ function render() {
   audio.setLobbyActive(showingLobby);
   // Crowd ambience only while the match pitch itself is showing.
   audio.setMatchActive(!showingLobby && state.joined && isMatchPhase(state.phase) && !state.waitingInLobby);
-  if (showingLobby) lobby.render(now);
+  if (showingLobby) lobby.render(now, dt);
   else {
     camera.updateBroadcastCamera(ball.mesh, players.getLocalPosition(), dt);
     ballFlame.update(dt, { now, playing: state.phase === 'playing' && !state.waitingInLobby, camera: camera.camera });
@@ -113,4 +109,4 @@ function render() {
   requestAnimationFrame(render);
 }
 requestAnimationFrame(render);
-window.addEventListener('pagehide', () => { audio.dispose(); network.dispose(); ui.goalPresentation.dispose(); ui.outNotice.dispose(); });
+window.addEventListener('pagehide', () => { audio.dispose(); network.dispose(); ui.goalPresentation.dispose(); ui.outNotice.dispose(); lobby.disposeStage(); });

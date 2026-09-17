@@ -4,6 +4,9 @@ import { FIELD } from '../../shared/field.js';
 import { CLIENT, SERVER } from '../network/protocol.js';
 import { createClubBadge } from '../ui/clubBadge.js';
 import { drawKitPreview } from '../gameplay/kitDesign.js';
+import { teamAccent } from './teamAccent.js';
+
+const SLOT_COUNT = FIELD.LOBBY_SLOTS.length;
 
 export function createClubSelector({ state, ui, network, events }) {
   const $ = ui.dom.$, container = $('clubSides'), dialog = $('clubDialog');
@@ -19,7 +22,7 @@ export function createClubSelector({ state, ui, network, events }) {
     card.innerHTML = `<div class="club-badge"></div>
       <div class="club-info"><span class="club-side-label">${team === 'blue' ? 'EV SAHİBİ' : 'DEPLASMAN'}<span class="club-captain"></span></span>
         <h2></h2><p class="club-meta"><span class="club-country"></span> · <span class="club-kit-label"></span></p></div>
-      <span class="team-count" id="${team}RosterCount">0 / 5</span>
+      <span class="team-count" id="${team}RosterCount">0 / ${SLOT_COUNT}</span>
       <canvas class="kit-preview" width="200" height="200" role="img"></canvas>
       <div class="club-actions"><button class="secondary club-edit" type="button">Kulüp / forma</button><button class="secondary club-join" type="button">Katıl</button></div>`;
     const find = (selector) => card.querySelector(selector);
@@ -29,7 +32,7 @@ export function createClubSelector({ state, ui, network, events }) {
       const slot = FIELD.LOBBY_SLOTS.findIndex((_, index) => !snapshot.players.some((p) => !p.isAI && p.team === team && p.slot === index));
       if (slot >= 0) network.send({ type: CLIENT.SELECT_SLOT, team, slot });
     });
-    container.append(card); cards.set(team, { find, badge });
+    container.append(card); cards.set(team, { find, badge, root: card });
   }
   function filtered() {
     const query = search.value.toLocaleLowerCase('tr').trim();
@@ -86,6 +89,7 @@ export function createClubSelector({ state, ui, network, events }) {
       const selection = msg.teams[team], club = getClub(selection.clubId), kit = getKit(selection.clubId, selection.kitId);
       if (!club || !kit) continue;
       card.badge(club); card.find('h2').textContent = club.name;
+      card.root.style.setProperty('--team', teamAccent(kit, club));
       card.find('.club-country').textContent = club.country;
       card.find('.club-kit-label').textContent = KIT_LABELS[kit.id];
       card.find('.kit-preview').setAttribute('aria-label', `${club.name} ${KIT_LABELS[kit.id]}`);
@@ -94,7 +98,7 @@ export function createClubSelector({ state, ui, network, events }) {
       card.find('.club-captain').textContent = captain ? `Kaptan: ${captain.name}` : 'Kaptan bekleniyor';
       card.find('.club-edit').disabled = msg.phase !== 'lobby' || selection.captainId !== state.myId;
       const me = msg.players.find((p) => p.id === state.myId);
-      card.find('.club-join').disabled = msg.phase !== 'lobby' || me?.team === team || msg.players.filter((p) => !p.isAI && p.team === team && Number.isInteger(p.slot)).length >= 5;
+      card.find('.club-join').disabled = msg.phase !== 'lobby' || me?.team === team || msg.players.filter((p) => !p.isAI && p.team === team && Number.isInteger(p.slot)).length >= SLOT_COUNT;
     }
     if (dialog.open) {
       if (msg.phase !== 'lobby' || msg.teams[editingTeam].captainId !== state.myId) dialog.close();
@@ -102,5 +106,10 @@ export function createClubSelector({ state, ui, network, events }) {
       else renderCandidate();
     }
   }
-  return { render };
+  // The bottom menu opens the same dialog for the player's own team.
+  function canEditMyTeam() {
+    return !!state.myTeam && snapshot?.phase === 'lobby' && snapshot.teams?.[state.myTeam]?.captainId === state.myId;
+  }
+  function openMyTeam() { if (canEditMyTeam()) open(state.myTeam); }
+  return { render, openMyTeam, canEditMyTeam };
 }

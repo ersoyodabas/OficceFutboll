@@ -34,8 +34,11 @@ scene.add(ball);
 const ballNet = { serverPos: new THREE.Vector3(0, BALL_R, 0), serverVel: new THREE.Vector3(), serverSpin: new THREE.Vector3(), lastUpdate: performance.now() };
 const _predicted = new THREE.Vector3();
 const _axis = new THREE.Vector3();
+let possessed = false;
 function update(dt, now) {
-    const elapsed = (now - ballNet.lastUpdate) / 1000;
+    // Players interpolate snapshots without extrapolation. During possession,
+    // use that same timeline so ball velocity cannot create an extra visual lead.
+    const elapsed = possessed ? 0 : (now - ballNet.lastUpdate) / 1000;
     _predicted.set(
       ballNet.serverPos.x + ballNet.serverVel.x * elapsed,
       Math.max(BALL_R, ballNet.serverPos.y + ballNet.serverVel.y * elapsed),
@@ -53,13 +56,14 @@ function update(dt, now) {
       if (ballSpeed > 0.05) ball.rotateOnWorldAxis(_axis.set(ballNet.serverVel.z, 0, -ballNet.serverVel.x).normalize(), (ballSpeed * dt) / BALL_R);
     }
 }
-function applySnapshot(snapshot, snap = false) {
+function applySnapshot(snapshot, snap = false, hasOwner = false) {
+possessed = hasOwner;
 ballNet.serverPos.set(snapshot.x, snapshot.y, snapshot.z);
 ballNet.serverVel.set(snapshot.vx, snapshot.vy, snapshot.vz);
 ballNet.serverSpin.set(snapshot.wx || 0, snapshot.wy || 0, snapshot.wz || 0);
 ballNet.lastUpdate = performance.now();
 if (snap) { ball.position.copy(ballNet.serverPos); ball.quaternion.set(0, 0, 0, 1); }
 }
-function reset() { ballNet.serverPos.set(0, BALL_R, 0); ballNet.serverVel.set(0, 0, 0); }
+function reset() { possessed = false; ballNet.serverPos.set(0, BALL_R, 0); ballNet.serverVel.set(0, 0, 0); }
 return { mesh: ball, net: ballNet, update, applySnapshot, reset };
 }

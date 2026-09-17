@@ -7,6 +7,7 @@
 <link rel="stylesheet" href="src/ui/styles.css" />
   <link rel="stylesheet" href="src/ui/goalPresentation.css">
   <link rel="stylesheet" href="src/ui/outNotice.css">
+  <link rel="stylesheet" href="src/ui/lobby.css">
 </head>
 <body>
   <div id="app">
@@ -45,45 +46,54 @@
     </div>
 
     <div class="overlay" id="lobbyOverlay" hidden>
-      <div class="lobby-shell">
-        <header class="lobby-header">
-          <h1 class="lobby-brand"><span id="lobbyLogo" role="button" tabindex="0" aria-label="Ofis Futbolu logosu">OFİS FUTBOLU</span><small>5'E 5</small></h1>
+      <div class="lobby-scene">
+        <header class="lobby-top">
+          <div class="lobby-brand">
+            <h1 class="lobby-wordmark"><span id="lobbyLogo" role="button" tabindex="0" aria-label="OFFICE FUTBOLL"><span class="wordmark-office">OFFICE</span><span class="wordmark-futboll">FUTBOLL</span></span></h1>
+            <p class="lobby-fixture"><span id="fixtureHome">—</span><b aria-hidden="true">VS</b><span id="fixtureAway">—</span></p>
+            <p class="lobby-format" id="lobbyFormat">MAÇ ÖNCESİ</p>
+          </div>
           <div class="lobby-tools">
             <div class="lobby-music-control"><label for="lobbyMusicQuickVolume">🎵</label><input id="lobbyMusicQuickVolume" type="range" min="0" max="1" step="0.01" value="0.5" aria-label="Lobi müziği seviyesi" /></div>
-            <button class="secondary" id="lobbySettingsBtn" type="button" data-open-settings aria-haspopup="dialog">Ayarlar</button>
-            <button class="secondary" id="profileBtn" type="button" aria-haspopup="dialog">Profil</button>
           </div>
         </header>
+
         <div id="clubSides" class="club-sides" aria-label="Kulüpler ve formalar"></div>
-        <div class="lobby-main">
-          <section class="pitch-panel" aria-label="Takım ve oyuncu seçimi">
-            <div id="lobbyPitch"><div id="pitchSlots" role="group" aria-label="Sahadaki oyuncu yerleri"></div></div>
-            <p id="slotStatus" role="status" aria-live="polite"></p>
+        <div id="lobbySlots" class="lobby-slots" role="group" aria-label="Takım dizilişi ve oyuncu yerleri"></div>
+        <div class="lobby-centre" id="lobbyCentre" aria-hidden="true"><span>VS</span></div>
+        <p id="slotStatus" role="status" aria-live="polite"></p>
+
+        <aside class="lobby-drawer collapsed" id="chatPanel" aria-label="Oyuncular ve sohbet">
+          <section class="drawer-section" aria-labelledby="rosterTitle">
+            <div class="side-heading"><h2 id="rosterTitle">Oyuncular</h2><span id="lobbyPlayerCount">0 oyuncu</span></div>
+            <ul id="readyRoster" class="ready-roster" aria-labelledby="rosterTitle"></ul>
           </section>
-          <aside class="lobby-side">
-            <section class="roster-panel" aria-labelledby="rosterTitle">
-              <div class="side-heading"><h2 id="rosterTitle">Oyuncular</h2><span id="lobbyPlayerCount">0 oyuncu</span></div>
-              <ul id="readyRoster" class="ready-roster" aria-label="Oyuncular ve hazır durumları"></ul>
-            </section>
-            <section class="chat-panel" id="chatPanel" aria-label="Lobi sohbeti">
-              <div class="side-heading chat-header">
-                <h2>Sohbet</h2>
-                <button class="chat-toggle" id="chatToggleBtn" type="button" aria-expanded="true" aria-label="Sohbeti daralt/genişlet">▾</button>
-              </div>
-              <div class="chat-body">
-                <div class="chat-messages" id="chatMessages" role="log" aria-live="polite"></div>
-                <form class="chat-form" id="chatForm">
-                  <input id="chatInput" type="text" placeholder="Mesaj yaz…" maxlength="200" autocomplete="off" aria-label="Sohbet mesajı" />
-                  <button class="secondary" type="submit">Gönder</button>
-                </form>
-              </div>
-            </section>
-          </aside>
-        </div>
-        <footer class="lobby-footer">
-          <div class="lobby-player"><div class="profile-avatar" id="profileAvatar" aria-hidden="true">O</div><div><strong id="profileName">Oyuncu</strong><span id="profileRole">Sahada bir yer seç</span></div></div>
-          <div class="ready-info"><p id="lobbyStatus" role="status">Takımına katılmak için boş bir yere tıkla.</p><div class="ready-progress"><div class="ready-meter" aria-hidden="true"><span id="readyMeterFill"></span></div><p id="readyProgress"></p></div></div>
-          <button class="primary" id="readyBtn" type="button" disabled>HAZIRIM</button>
+          <section class="drawer-section chat-section" aria-label="Lobi sohbeti">
+            <div class="side-heading"><h2>Sohbet</h2></div>
+            <div class="chat-messages" id="chatMessages" role="log" aria-live="polite"></div>
+            <form class="chat-form" id="chatForm">
+              <input id="chatInput" type="text" placeholder="Mesaj yaz…" maxlength="200" autocomplete="off" aria-label="Sohbet mesajı" />
+              <button class="secondary" type="submit">Gönder</button>
+            </form>
+          </section>
+        </aside>
+
+        <footer class="lobby-bottom">
+          <nav class="lobby-menu" aria-label="Lobi menüsü">
+            <button class="lobby-menu-btn" id="profileBtn" type="button" aria-haspopup="dialog">
+              <span class="profile-avatar" id="profileAvatar" aria-hidden="true">O</span>
+              <span class="menu-text"><small id="profileRole">Sahada bir yer seç</small><strong id="profileName">Oyuncu</strong></span>
+            </button>
+            <button class="lobby-menu-btn" id="clubKitBtn" type="button" aria-haspopup="dialog"><span class="menu-text"><small>TAKIM</small><strong>KULÜP / FORMA</strong></span></button>
+            <button class="lobby-menu-btn" id="lobbySettingsBtn" type="button" data-open-settings aria-haspopup="dialog"><span class="menu-text"><small>OYUN</small><strong>AYARLAR</strong></span></button>
+            <button class="lobby-menu-btn" id="chatToggleBtn" type="button" aria-expanded="false" aria-controls="chatPanel"><span class="menu-text"><small>LOBİ</small><strong>SOHBET</strong></span><span class="chat-unread" id="chatUnread" hidden>0</span></button>
+          </nav>
+          <div class="lobby-ready">
+            <button class="ready-button" id="readyBtn" type="button" disabled>HAZIRIM</button>
+            <div class="ready-meter" aria-hidden="true"><span id="readyMeterFill"></span></div>
+            <p id="readyProgress"></p>
+          </div>
+          <p class="lobby-hint" id="lobbyStatus" role="status"></p>
         </footer>
       </div>
     </div>
@@ -144,10 +154,11 @@
       </div>
     </div>
 
-    <div id="countdownOverlay" hidden>
-      <div id="countdownNumber">5</div>
+    <div id="countdownOverlay" hidden aria-hidden="true">
       <div id="countdownSub">MAÇ BAŞLIYOR</div>
+      <div id="countdownNumber">5</div>
     </div>
+    <div id="matchTransition" hidden aria-hidden="true"></div>
 
     <div class="overlay" id="endOverlay" hidden>
       <div class="result" id="endResult">MAÇ BİTTİ</div>

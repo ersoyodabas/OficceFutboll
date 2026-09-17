@@ -16,7 +16,7 @@ export function matchSnapshot(state, now = Date.now()) {
       facingX: c.facing.x, facingZ: c.facing.z, hasBall: state.ballOwnerId === c.id,
       sliding: c.slideRemaining > 0,
       charging: !!c.shotCharge,
-      // Server time the current charge began, so the power bar follows the server's timer.
+      // Server time for charge confirmation; the local UI starts at keydown.
       chargeStartedAt: c.shotCharge ? c.shotCharge.startedAt : null,
       diving: !!c.keeperDive,
       action: c.lastAction && now - c.lastAction.at < 300 ? c.lastAction.type : null,

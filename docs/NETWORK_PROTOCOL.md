@@ -12,7 +12,7 @@ All payloads are JSON objects with a `type` property.
 | --- | --- | --- | --- |
 | `join` | `name` | Enter the lobby; slot remains unselected. | `{"type":"join","name":"Ada"}` |
 | `select_slot` | `team`, `slot` | Select a free team slot in the lobby. | `{"type":"select_slot","team":"blue","slot":4}` |
-| `ready` | `ready` | Toggle readiness after selecting a slot. | `{"type":"ready","ready":true}` |
+| `ready` | `ready` | Toggle readiness after selecting a slot. Sent during a countdown with `false`, it takes that readiness back and the server cancels the countdown; anything else during a countdown is ignored. | `{"type":"ready","ready":true}` |
 | `input` | `x`, `z`, `sprint` | Request normalized movement. The server validates and applies it only during a match. | `{"type":"input","x":0,"z":-1,"sprint":false}` |
 | `action` | `key` | Request `A`, `S` or `D` action. The server determines pass/shot/cross/tackle and success. `S` with the ball is an uncharged tap shot; `S` without it is a standing tackle. | `{"type":"action","key":"S"}` |
 | `shot_charge_start` | none | S key went down. With possession the server starts timing a charged shot; without it the server treats it as a standing tackle. Extra fields are ignored. | `{"type":"shot_charge_start"}` |
@@ -27,8 +27,8 @@ All payloads are JSON objects with a `type` property.
 | `lobby` | `phase`, `players`, `score`, `hostId`, `minPlayers`, `positions`, optional `countdown` | Complete lobby presentation state. | `{"type":"lobby","phase":"lobby","players":[],"score":{"blue":0,"red":0}}` |
 | `welcome` | `id`, `isHost`, `field`, `positions` | Identifies an accepted socket. | `{"type":"welcome","id":"uuid","isHost":true}` |
 | `slot_error` | `message` | Rejected slot/ready request. | `{"type":"slot_error","message":"Bu yeri başka bir oyuncu seçti."}` |
-| `countdownStart` | `startAt`, `duration` | Authoritative absolute start timestamp and countdown duration. | `{"type":"countdownStart","startAt":1730000000000,"duration":3000}` |
-| `countdownCancelled` | none | A new join or departure invalidated ready state. | `{"type":"countdownCancelled"}` |
+| `countdownStart` | `startAt`, `duration` | Authoritative start timestamp and countdown duration (`COUNTDOWN_SECONDS`, 5 s). The lobby counts the duration down from the moment the message arrives, so a client clock that differs from the server's cannot skew it. | `{"type":"countdownStart","startAt":1730000000000,"duration":5000}` |
+| `countdownCancelled` | none | The countdown was stopped: a join or departure changed the line-up (everyone's readiness is cleared), or a player took their own readiness back (the others keep theirs). The following `lobby` message carries the authoritative ready flags. | `{"type":"countdownCancelled"}` |
 | `matchStart` | `startedAt`, `endsAt` | Authoritative match timing. | `{"type":"matchStart","startedAt":1730000003000,"endsAt":1730000303000}` |
 | `state` | `phase`, `serverTime`, `score`, `startedAt`, `endsAt`, `ball`, `players`, `goalEvent`, `outEvent`, `kickoffTeam`, `kickoffEndsAt` | 20 Hz authoritative rendering snapshot. `ball` includes angular velocity `wx`/`wy`/`wz`; each player includes `charging`, `chargeStartedAt` (server time, or `null`) and, for AI keepers, `diving`. | `{"type":"state","score":{"blue":1,"red":0},"ball":{"x":0,"y":0.18,"z":0,"vx":0,"vy":0,"vz":0,"wx":0,"wy":0,"wz":0},"players":[]}` |
 | `actionResult` | `id`, `action`, `success`, `hasBall`; `shot_charge` also has `startedAt` (server time); `shot` also has `charge` (0–1), `speed`, `lift` (m/s), `aim` (−1 left … 1 right) and `spin` (rad/s) | Server result of a requested or automatic action. Charged shots add `shot_charge` (charge started) and `shot_cancel` (charge dropped, e.g. ball lost). AI keepers report `save` (held) or `parry` (deflected). | `{"type":"actionResult","id":"uuid","action":"shot","success":true,"hasBall":true,"charge":1,"speed":44,"lift":5.8,"aim":0.4,"spin":-8}` |
